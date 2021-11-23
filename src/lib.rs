@@ -1,8 +1,13 @@
-use hex_literal::hex;
+mod parse;
+pub use parse::{parse, Instructions};
+mod executor;
+pub use executor::Executor;
+
+use generic_array::{typenum::U32, GenericArray};
 use hex::encode as hex_encode;
-use sha2::{Sha256, Sha512, Digest};
+use hex_literal::hex;
+use sha2::{Digest, Sha256, Sha512};
 use sha3::{Digest as Sha3_Digest, Sha3_256};
-use generic_array::{GenericArray, typenum::{U32}};
 
 /**
  * Types:
@@ -87,18 +92,28 @@ mod tests {
     #[test]
     fn test_sha2() {
         let result = sha256(&b"hello world".to_vec());
-        assert_eq!(result[..], hex!("
+        assert_eq!(
+            result[..],
+            hex!(
+                "
             b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
-        ")[..]);
+        "
+            )[..]
+        );
     }
 
     #[test]
     fn test_sha3() {
         let result = sha3_256(&b"hello world".to_vec());
         // println!("{:x?}", hex_encode(result.as_slice()));
-        assert_eq!(result[..], hex!("
+        assert_eq!(
+            result[..],
+            hex!(
+                "
             644bcc7e564373040999aac89e7622f3ca71fba1d972fd94a31c3bfbf24e3938
-        ")[..]);
+        "
+            )[..]
+        );
     }
 
     #[test]
