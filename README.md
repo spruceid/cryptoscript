@@ -64,3 +64,18 @@ no ambiguity in contrast to specifying a data model alone.
   to reduce permissioning scope, and a delegated capability could be
   implemented as a signed outer codeblock with bring-your-own-block semantics
   for custom functionality with attenuated permissions.
+
+## Use with Capabilities
+
+Due to the vast scale and variety of user data, we cannot specify all possible
+permissions upfront with traditional approaches like RBAC. Capability-based
+permission models are far more flexible and work like a hall pass. Users can
+define new custom permissions with cryptoscript, and authorize with their keys.
+
+There are infinite permutations of the possible ways to permission access with
+on-chain and off-chain data, impossible to specify a priori. We introduce a
+non-turing complete DSL inspired by bitcoin script called cryptoscript, where
+the presenter "clears" a puzzle to get authorized. cryptoscript is extensible
+with modules to support all blockchain networks and off-chain data. This
+policy-as-code primitive can create infinite matching representations.
+
