@@ -1,12 +1,13 @@
+mod types;
+pub use types::{Elem, Instructions};
+
 mod parse;
-pub use parse::{parse, Instructions};
+pub use parse::{parse};
 mod executor;
 pub use executor::Executor;
 
 use generic_array::{typenum::U32, GenericArray};
-use hex::encode as hex_encode;
-use hex_literal::hex;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 use sha3::{Digest as Sha3_Digest, Sha3_256};
 
 /**

@@ -1,4 +1,4 @@
-use crate::parse::{Elem, Instruction, Instructions};
+use crate::types::{Elem, Instruction, Instructions};
 
 use thiserror::Error;
 

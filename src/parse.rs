@@ -8,20 +8,13 @@
 ///
 /// Where CHARS is any number of characters which aren't escaped double-quotes (\") and HEX is a 64
 /// digit hexadecimal number.
+
+use crate::types::{Elem, Instruction, Instructions};
+
 use std::str::FromStr;
 
 use generic_array::{typenum::U32, GenericArray};
 use thiserror::Error;
-
-pub type Instructions = Vec<Instruction>;
-
-#[derive(Debug)]
-pub enum Instruction {
-    Push(Elem),
-    FnHashSha256,
-    FnCheckEqual,
-    FnAssertTrue,
-}
 
 pub fn parse(input: &str) -> Result<Instructions, ParseError> {
     input
@@ -42,13 +35,6 @@ fn parse_instruction(term: &str) -> Result<Instruction, ParseError> {
         "hash_sha256" => Ok(Instruction::FnHashSha256),
         _ => Err(ParseError::UnsupportedInstruction(term.to_string())),
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Elem {
-    Bool(bool),
-    Bytes32(GenericArray<u8, U32>),
-    BytesN(Vec<u8>),
 }
 
 impl Elem {
