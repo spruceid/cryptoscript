@@ -1,4 +1,4 @@
-use crate::types::{Elem, Instruction, Instructions};
+use crate::types::{Elem, Instruction, Instructions, Restack, RestackError};
 
 use thiserror::Error;
 
@@ -12,6 +12,7 @@ impl Executor {
         for expr in expressions {
             match expr {
                 Instruction::Push(elem) => self.push(elem),
+                Instruction::FnRestack(restack) => self.restack(restack)?,
                 Instruction::FnAssertTrue => self.assert_true()?,
                 Instruction::FnCheckEqual => self.check_equal()?,
                 Instruction::FnHashSha256 => self.sha256()?,
@@ -51,6 +52,15 @@ impl Executor {
     fn pop(&mut self) -> Result<Elem, ExecError> {
         self.stack.pop().ok_or_else(|| ExecError::EmptyStack)
     }
+
+    fn restack(&mut self, restack: Restack) -> Result<(), ExecError> {
+        match restack.run(&self.stack) {
+            Err(e) => Err(ExecError::RestackExecError(e)),
+            Ok(new_stack) => {
+                self.stack = new_stack;
+                Ok(()) },
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -61,4 +71,6 @@ pub enum ExecError {
     EmptyStack,
     #[error("attempted to hash an elem of an unsupported type ({0})")]
     HashUnsupportedType(&'static str),
+    #[error("restack failed ({0})")]
+    RestackExecError(RestackError),
 }
