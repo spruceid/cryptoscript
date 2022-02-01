@@ -13,7 +13,7 @@ use crate::types::{Elem, Instruction, Instructions};
 
 use std::str::FromStr;
 
-use generic_array::{typenum::U32, GenericArray};
+use generic_array::{GenericArray};
 use thiserror::Error;
 
 pub fn parse(input: &str) -> Result<Instructions, ParseError> {
