@@ -16,6 +16,14 @@ use std::str::FromStr;
 use generic_array::{GenericArray};
 use thiserror::Error;
 
+
+pub fn parse_json(input: &str) -> Result<Instructions, ParseError> {
+    match serde_json::from_str(&input) {
+        Err(serde_error) => Err(ParseError::SerdeJsonError(serde_error)),
+        Ok(instructions) => Ok(instructions),
+    }
+}
+
 pub fn parse(input: &str) -> Result<Instructions, ParseError> {
     input
         .split(';')
@@ -109,4 +117,6 @@ pub enum ParseError {
     UnsupportedElem(String),
     #[error("instruction is malformed or cannot be parsed in this context")]
     UnsupportedInstruction(String),
+    #[error("error from serde_json ({0})")]
+    SerdeJsonError(serde_json::Error),
 }

@@ -1,15 +1,49 @@
 use generic_array::{typenum::U32, GenericArray};
 use thiserror::Error;
+
 use std::cmp;
 
-#[derive(Clone, Debug, PartialEq)]
+
+// extern crate base64;
+use base64;
+use serde::{de, Deserialize, Serialize};
+// use serde_json::Result;
+
+use serde::de::{Deserializer};
+use serde::ser::{Serializer};
+
+fn serialize_generic_array_u8_u32<T, S>(v: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: AsRef<[u8]>,
+    S: Serializer,
+{
+    serializer.serialize_str(&base64::encode(v.as_ref()))
+}
+
+pub fn deserialize_generic_array_u8_u32<'de, D>(deserializer: D) -> Result<GenericArray<u8, U32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    String::deserialize(deserializer)
+        .and_then(|string| base64::decode(&string).map_err(|err| Error::custom(err.to_string())))
+        .and_then(|vec| {
+            GenericArray::from_exact_iter(vec).ok_or(
+                de::Error::custom("String::deserialize failed to produce an array of length 32"))
+        })
+}
+
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Elem {
     Bool(bool),
+    #[serde(serialize_with = "serialize_generic_array_u8_u32", deserialize_with = "deserialize_generic_array_u8_u32")]
     Bytes32(GenericArray<u8, U32>),
     BytesN(Vec<u8>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Instruction {
     Push(Elem),
     FnRestack(Restack),
@@ -42,7 +76,7 @@ pub type Stack = Vec<Elem>;
 //     + REQUIRED: constant compile-time choice of manipulations
 //     + local: just print [x_old_stack_index_0, x_old_stack_index_1, ..]
 //     + global: keep track of stack indices (always possible?) and print where it's from???
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Restack {
     restack_depth: StackIx,
     restack_vec: Vec<StackIx>
