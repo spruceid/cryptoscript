@@ -54,7 +54,7 @@ impl Executor {
     }
 
     fn restack(&mut self, restack: Restack) -> Result<(), ExecError> {
-        match restack.run(&self.stack) {
+        match restack.run(&mut self.stack) {
             Err(e) => Err(ExecError::RestackExecError(e)),
             Ok(new_stack) => {
                 self.stack = new_stack;

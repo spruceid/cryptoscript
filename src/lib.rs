@@ -121,10 +121,9 @@ mod tests {
         );
     }
 
-    // UNUSED
-    // #[test]
-    // fn test_drop_bytes() {
-    //     let result = drop_bytes(6, &b"hello world".to_vec());
-    //     assert_eq!(&result[..], b"world");
-    // }
+    #[test]
+    fn test_drop_bytes() {
+        let result = drop_bytes(6, &b"hello world".to_vec());
+        assert_eq!(&result[..], b"world");
+    }
 }

@@ -95,6 +95,7 @@ pub struct Restack {
     restack_vec: Vec<StackIx>,
 }
 
+
 impl Restack {
     pub fn id() -> Self {
         Restack {
@@ -110,15 +111,43 @@ impl Restack {
         }
     }
 
+    pub fn drop_n(n: usize) -> Self {
+        Restack {
+            restack_depth: n,
+            restack_vec: vec![]
+        }
+    }
 
-    pub fn run(&self, stack: &Stack) -> Result<Stack, RestackError> {
+    pub fn drop() -> Self {
+        Self::drop_n(1)
+    }
+
+    // duplicates the (ix)th value onto the top of the stack (0-indexed)
+    pub fn dup_n(ix: usize) -> Self {
+        Restack {
+            restack_depth: ix+1,
+            restack_vec: (ix..ix).chain(0..ix).collect(),
+        }
+    }
+
+    pub fn dup() -> Self {
+        Self::dup_n(0)
+    }
+
+    pub fn run(&self, stack: &mut Stack) -> Result<Stack, RestackError> {
         if self.restack_depth <= stack.len() {
-            self.restack_vec.iter().map(|&restack_index|
+            let result = self.restack_vec.iter().map(|&restack_index|
                 match stack.get(restack_index) {
                     None => Err(RestackError::StackIndexInvalid{ restack_index: restack_index, restack_depth: self.restack_depth, }),
                     Some(stack_element) => Ok( stack_element.clone() ),
                 }
-            ).collect::<Result<Stack, RestackError>>()?.extend(stack.drain(self.restack_depth..))
+            ).collect::<Result<Stack, RestackError>>();
+            match result {
+                Ok(mut result_ok) => {
+                    result_ok.extend(stack.drain(self.restack_depth..));
+                    Ok(result_ok) },
+                Err(e) => Err(e)
+            }
 
         } else {
             Err(RestackError::InvalidDepth{ stack_len: stack.len(), restack_depth: self.restack_depth, })
@@ -171,44 +200,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_id_restack() {
-        let example_stack = vec![Elem::Bool(false), Elem::Bool(true)];
-        assert_eq!(Ok(example_stack.clone()), Restack::id().run(&example_stack))
-
+    fn test_restack_id() {
+        let mut example_stack = vec![Elem::Bool(false), Elem::Bool(true)];
+        assert_eq!(Ok(example_stack.clone()), Restack::id().run(&mut example_stack))
     }
 
-    // #[test]
-    // fn test_sha2() {
-    //     let result = sha256(&b"hello world".to_vec());
-    //     assert_eq!(
-    //         result[..],
-    //         hex!(
-    //             "
-    //         b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
-    //     "
-    //         )[..]
-    //     );
-    // }
+    #[test]
+    fn test_restack_drop() {
+        let mut example_stack_in = vec![Elem::Bool(false), Elem::Bool(true)];
+        let example_stack_out = vec![Elem::Bool(true)];
+        assert_eq!(Ok(example_stack_out), Restack::drop().run(&mut example_stack_in))
+    }
 
-    // #[test]
-    // fn test_sha3() {
-    //     let result = sha3_256(&b"hello world".to_vec());
-    //     // println!("{:x?}", hex_encode(result.as_slice()));
-    //     assert_eq!(
-    //         result[..],
-    //         hex!(
-    //             "
-    //         644bcc7e564373040999aac89e7622f3ca71fba1d972fd94a31c3bfbf24e3938
-    //     "
-    //         )[..]
-    //     );
-    // }
+    #[test]
+    fn test_restack_drop_n() {
+        let example_stack_in = vec![Elem::Bool(false), Elem::Bool(true), Elem::Bool(false)];
+        let example_stack_out_0 = vec![Elem::Bool(false), Elem::Bool(true), Elem::Bool(false)];
+        let example_stack_out_1 = vec![Elem::Bool(true), Elem::Bool(false)];
+        let example_stack_out_2 = vec![Elem::Bool(false)];
+        let example_stack_out_3 = vec![];
+        assert_eq!(Ok(example_stack_out_0), Restack::drop_n(0).run(&mut example_stack_in.clone()));
+        assert_eq!(Ok(example_stack_out_1), Restack::drop_n(1).run(&mut example_stack_in.clone()));
+        assert_eq!(Ok(example_stack_out_2), Restack::drop_n(2).run(&mut example_stack_in.clone()));
+        assert_eq!(Ok(example_stack_out_3), Restack::drop_n(3).run(&mut example_stack_in.clone()))
+    }
 
-    // #[test]
-    // fn test_drop_bytes() {
-    //     let result = drop_bytes(6, &b"hello world".to_vec());
-    //     assert_eq!(&result[..], b"world");
-    // }
+    #[test]
+    fn test_restack_swap() {
+        let mut example_stack_in = vec![Elem::Bool(false), Elem::Bool(true)];
+        let example_stack_out = vec![Elem::Bool(true), Elem::Bool(false)];
+        assert_eq!(Ok(example_stack_out), Restack::swap().run(&mut example_stack_in))
+    }
+
+    #[test]
+    fn test_restack_swap_twice_append() {
+        let mut example_stack = vec![Elem::Bool(false), Elem::Bool(true)];
+        assert_eq!(Ok(example_stack.clone()), Restack::swap().append(Restack::swap()).run(&mut example_stack))
+    }
 
 }
 
