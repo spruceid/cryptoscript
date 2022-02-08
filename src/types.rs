@@ -44,7 +44,7 @@ impl PartialOrd for Elem {
 // TODO:
 
 // some:
-// - concat (support cons)
+// - concat (support cons?)
 //     + bytes
 //     + string
 //     + array
@@ -65,22 +65,12 @@ impl PartialOrd for Elem {
 // - and
 // - or
 
-// Bytes(Vec<u8>),
-
 // Number(Number), -->> later
 // - to_int
 // - add
 // - sub
 // - mul
 // - div
-
-// String(String),
-
-// Array(Vec<Elem>),
-// - index
-
-// Object(Map<String, Value>),
-
 
 // DONE:
 
@@ -89,6 +79,11 @@ impl PartialOrd for Elem {
 // - compare
 
 // Unit,
+// Array(Vec<Elem>),
+// Bytes(Vec<u8>),
+// String(String),
+// Object(Map<String, Value>),
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Instruction {
@@ -98,6 +93,10 @@ pub enum Instruction {
     FnCheckLe,
     FnCheckLt,
     FnCheckEqual,
+    FnConcat,
+    FnSlice,
+    FnIndex, // Array
+    FnLookup, // Map
     FnAssertTrue,
 }
 

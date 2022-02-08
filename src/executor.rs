@@ -19,6 +19,10 @@ impl Executor {
                 Instruction::FnCheckLe => self.check_le()?,
                 Instruction::FnCheckLt => self.check_lt()?,
                 Instruction::FnCheckEqual => self.check_equal()?,
+                Instruction::FnConcat => self.concat()?,
+                Instruction::FnSlice => self.slice()?,
+                Instruction::FnIndex => self.index()?,
+                Instruction::FnLookup => self.lookup()?,
                 Instruction::FnHashSha256 => self.sha256()?,
             }
         }
@@ -50,6 +54,62 @@ impl Executor {
         let one = self.pop()?;
         let other = self.pop()?;
         self.push(Elem::Bool(one == other));
+        Ok(())
+    }
+
+    fn concat(&mut self) -> Result<(), ExecError> {
+        let one = self.pop()?;
+        let other = self.pop()?;
+        match (one, other) {
+            (Elem::Bytes(x), Elem::Bytes(y)) => {
+                let mut result = x.clone();
+                result.append(&mut y.clone());
+                self.push(Elem::Bytes(result));
+                Ok(()) },
+
+            (Elem::String(x), Elem::String(y)) => {
+                let mut result = x.clone();
+                result.push_str(&mut y.clone());
+                self.push(Elem::String(result));
+                Ok(()) },
+
+            (Elem::Array(x), Elem::Array(y)) => {
+                let mut result = x.clone();
+                result.append(&mut y.clone());
+                self.push(Elem::Array(result));
+                Ok(()) },
+
+            (Elem::Object(x), Elem::Object(y)) => {
+                let mut result = x.clone();
+                result.append(&mut y.clone());
+                self.push(Elem::Object(result));
+                Ok(()) },
+
+            (some_x, some_y) => {
+                let lhs = &some_x.simple_type();
+                let rhs = &some_y.simple_type();
+                Err(ExecError::ConcatUnsupportedTypes { lhs: lhs, rhs: rhs }) },
+        }
+    }
+
+    fn slice(&mut self) -> Result<(), ExecError> {
+        let one = self.pop()?;
+        // let other = self.pop()?;
+        // self.push(Elem::Bool(one == other));
+        Ok(())
+    }
+
+    fn index(&mut self) -> Result<(), ExecError> {
+        let one = self.pop()?;
+        // let other = self.pop()?;
+        // self.push(Elem::Bool(one == other));
+        Ok(())
+    }
+
+    fn lookup(&mut self) -> Result<(), ExecError> {
+        let one = self.pop()?;
+        // let other = self.pop()?;
+        // self.push(Elem::Bool(one == other));
         Ok(())
     }
 
@@ -90,6 +150,11 @@ pub enum ExecError {
     EmptyStack,
     #[error("attempted to hash an elem of an unsupported type ({0})")]
     HashUnsupportedType(&'static str),
-    #[error("restack failed ({0})")]
+    #[error("restack failed: {0}")]
     RestackExecError(RestackError),
+    #[error("concat applied to unsupported types: lhs: {lhs:?}; rhs: {rhs:?}")]
+    ConcatUnsupportedTypes {
+        lhs: &'static str,
+        rhs: &'static str,
+    },
 }
