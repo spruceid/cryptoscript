@@ -2,6 +2,8 @@ use crate::types::{Elem, Instruction, Instructions, Restack, RestackError};
 
 use thiserror::Error;
 
+// TODO: implement n-step executor && errors that tell you what step they're on
+// to allow minimal step-by-step debugging
 #[derive(Debug, Default)]
 pub struct Executor {
     stack: Vec<Elem>,
@@ -14,6 +16,8 @@ impl Executor {
                 Instruction::Push(elem) => self.push(elem),
                 Instruction::FnRestack(restack) => self.restack(restack)?,
                 Instruction::FnAssertTrue => self.assert_true()?,
+                Instruction::FnCheckLe => self.check_le()?,
+                Instruction::FnCheckLt => self.check_lt()?,
                 Instruction::FnCheckEqual => self.check_equal()?,
                 Instruction::FnHashSha256 => self.sha256()?,
             }
@@ -26,6 +30,20 @@ impl Executor {
             Elem::Bool(true) => Ok(()),
             found => Err(ExecError::AssertTrueFailed(found)),
         }
+    }
+
+    fn check_le(&mut self) -> Result<(), ExecError> {
+        let one = self.pop()?;
+        let other = self.pop()?;
+        self.push(Elem::Bool(one <= other));
+        Ok(())
+    }
+
+    fn check_lt(&mut self) -> Result<(), ExecError> {
+        let one = self.pop()?;
+        let other = self.pop()?;
+        self.push(Elem::Bool(one < other));
+        Ok(())
     }
 
     fn check_equal(&mut self) -> Result<(), ExecError> {
@@ -49,6 +67,7 @@ impl Executor {
         self.stack.push(elem)
     }
 
+    // TODO: since pop can fail, require passing debug info to it
     fn pop(&mut self) -> Result<Elem, ExecError> {
         self.stack.pop().ok_or_else(|| ExecError::EmptyStack)
     }

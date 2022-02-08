@@ -3,27 +3,100 @@ use thiserror::Error;
 use std::cmp;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Number, Value};
 
 // TODO:
 // - restack:
-//     + test against common stack manipulations, e.g. swap; swap = id
+//     + property based tests
 
 // - json
-//     + add to stack type
 //     + add construction/destruction primitives
 //     + add property based tests
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Elem {
+    Unit,
     Bool(bool),
     Bytes(Vec<u8>),
+    Number(Number),
+    String(String),
+    Array(Vec<Elem>),
+    Object(Map<String, Value>),
 }
+
+impl PartialOrd for Elem {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        match (self, other) {
+            (Self::Unit, Self::Unit) => Some(cmp::Ordering::Equal),
+            (Self::Bool(x), Self::Bool(y)) => x.partial_cmp(y),
+            (Self::Bytes(x), Self::Bytes(y)) => x.partial_cmp(y),
+            (Self::Number(x), Self::Number(y)) => format!("{}", x).partial_cmp(&format!("{}", y)),
+            (Self::String(x), Self::String(y)) => x.partial_cmp(y),
+            (Self::Array(x), Self::Array(y)) => x.partial_cmp(y),
+            (Self::Object(x), Self::Object(y)) => if x == y { Some(cmp::Ordering::Equal) } else { None }
+            (_, _) => None,
+        }
+    }
+}
+
+
+// TODO:
+
+// some:
+// - concat (support cons)
+//     + bytes
+//     + string
+//     + array
+//     + object
+// - slice
+//     + bytes
+//     + string
+//     + array
+//     + object
+// - index
+//     + array : nat -> elem
+//     + object : string -> elem
+//     + bytes -> bit  -->> PUNT
+//     + string -> byte/char??  -->> PUNT
+
+// Bool(bool),
+// - neg
+// - and
+// - or
+
+// Bytes(Vec<u8>),
+
+// Number(Number), -->> later
+// - to_int
+// - add
+// - sub
+// - mul
+// - div
+
+// String(String),
+
+// Array(Vec<Elem>),
+// - index
+
+// Object(Map<String, Value>),
+
+
+// DONE:
+
+// all:
+// - equals
+// - compare
+
+// Unit,
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Instruction {
     Push(Elem),
     FnRestack(Restack),
     FnHashSha256,
+    FnCheckLe,
+    FnCheckLt,
     FnCheckEqual,
     FnAssertTrue,
 }
