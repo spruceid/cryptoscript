@@ -1,21 +1,11 @@
-use generic_array::{typenum::U32, GenericArray};
 use thiserror::Error;
 
 use std::cmp;
 
-
-// extern crate base64;
-use base64;
-use serde::{de, Deserialize, Serialize};
-// use serde_json::Result;
-
-use serde::de::{Deserializer};
-use serde::ser::{Serializer};
-
+use serde::{Deserialize, Serialize};
 
 // TODO:
 // - restack:
-//     + DONE: add common stack manipulation constructors
 //     + test against common stack manipulations, e.g. swap; swap = id
 
 // - json
@@ -23,37 +13,10 @@ use serde::ser::{Serializer};
 //     + add construction/destruction primitives
 //     + add property based tests
 
-
-
-fn serialize_generic_array_u8_u32<T, S>(v: &T, serializer: S) -> Result<S::Ok, S::Error>
-where
-    T: AsRef<[u8]>,
-    S: Serializer,
-{
-    serializer.serialize_str(&base64::encode(v.as_ref()))
-}
-
-pub fn deserialize_generic_array_u8_u32<'de, D>(deserializer: D) -> Result<GenericArray<u8, U32>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    use serde::de::Error;
-
-    String::deserialize(deserializer)
-        .and_then(|string| base64::decode(&string).map_err(|err| Error::custom(err.to_string())))
-        .and_then(|vec| {
-            GenericArray::from_exact_iter(vec).ok_or(
-                de::Error::custom("String::deserialize failed to produce an array of length 32"))
-        })
-}
-
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Elem {
     Bool(bool),
-    #[serde(serialize_with = "serialize_generic_array_u8_u32", deserialize_with = "deserialize_generic_array_u8_u32")]
-    Bytes32(GenericArray<u8, U32>),
-    BytesN(Vec<u8>),
+    Bytes(Vec<u8>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

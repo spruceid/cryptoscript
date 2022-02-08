@@ -6,9 +6,7 @@ pub use parse::parse;
 mod executor;
 pub use executor::Executor;
 
-use generic_array::{typenum::U32, GenericArray};
 use sha2::{Digest, Sha256};
-// use sha3::{Digest as Sha3_Digest, Sha3_256};
 
 // /**
 //  * Types:
@@ -56,7 +54,7 @@ use sha2::{Digest, Sha256};
 //  *      }
 //  */
 
-fn sha256(input: &Vec<u8>) -> GenericArray<u8, U32> {
+fn sha256(input: &Vec<u8>) -> Vec<u8> {
     // create a Sha256 object
     let mut hasher = Sha256::new();
 
@@ -65,12 +63,13 @@ fn sha256(input: &Vec<u8>) -> GenericArray<u8, U32> {
 
     // read hash digest and consume hasher
     let result = hasher.finalize();
-    return result;
+    return result.to_vec();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use generic_array::{typenum::U32, GenericArray};
     use hex_literal::hex;
     use sha3::{Digest as Sha3_Digest, Sha3_256};
 

@@ -37,8 +37,8 @@ impl Executor {
 
     fn sha256(&mut self) -> Result<(), ExecError> {
         match self.pop()? {
-            Elem::BytesN(bytes) => {
-                self.push(Elem::Bytes32(super::sha256(&bytes)));
+            Elem::Bytes(bytes) => {
+                self.push(Elem::Bytes(super::sha256(&bytes)));
                 Ok(())
             }
             elem => Err(ExecError::HashUnsupportedType(elem.simple_type())),
