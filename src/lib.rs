@@ -8,10 +8,7 @@ pub use executor::Executor;
 
 use generic_array::{typenum::U32, GenericArray};
 use sha2::{Digest, Sha256};
-use sha3::{Digest as Sha3_Digest, Sha3_256};
-
-// #[cfg(test)]
-// use hex_literal::hex;
+// use sha3::{Digest as Sha3_Digest, Sha3_256};
 
 // /**
 //  * Types:
@@ -75,6 +72,7 @@ fn sha256(input: &Vec<u8>) -> GenericArray<u8, U32> {
 mod tests {
     use super::*;
     use hex_literal::hex;
+    use sha3::{Digest as Sha3_Digest, Sha3_256};
 
     fn sha3_256(input: &Vec<u8>) -> GenericArray<u8, U32> {
         // create a Sha256 object
