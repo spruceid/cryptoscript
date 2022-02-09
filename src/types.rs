@@ -18,8 +18,8 @@ use serde_json::{Map, Number, Value};
 pub enum Elem {
     Unit,
     Bool(bool),
-    Bytes(Vec<u8>),
     Number(Number),
+    Bytes(Vec<u8>),
     String(String),
     Array(Vec<Elem>),
     Object(Map<String, Value>),
@@ -178,7 +178,7 @@ impl Restack {
     pub fn dig(ix: usize) -> Self {
         Restack {
             restack_depth: ix+1,
-            restack_vec: (0..ix+1).cycle().skip(ix).take(ix+1).collect(),
+            restack_vec: (0..=ix).cycle().skip(ix).take(ix+1).collect(),
         }
     }
 
@@ -187,7 +187,7 @@ impl Restack {
     pub fn dug(ix: usize) -> Self {
         Restack {
             restack_depth: ix+1,
-            restack_vec: (1..ix+1).chain(std::iter::once(0)).collect()
+            restack_vec: (1..=ix).chain(std::iter::once(0)).collect()
         }
     }
 
