@@ -1,4 +1,4 @@
-use cryptoscript::{Elem, Executor, Instruction, Instructions, Restack};
+use cryptoscript::{parse_json, Elem, Executor, Instruction, Instructions, Restack};
 
 #[cfg(test)]
 mod tests {
@@ -6,7 +6,6 @@ mod tests {
     use cryptoscript::{parse};
 
     #[test]
-    #[should_panic]
     fn test_parse_exec() {
         let instructions = parse(
             r#"
@@ -154,12 +153,11 @@ fn main() {
 
     ];
 
-    // assert_eq!(serde_json::from_value::<Instructions>(serde_json::from_str(json_instructions).unwrap()).unwrap().into_iter(), instructions);
-    // println!("{}", serde_json::to_string_pretty(&serde_json::to_value(instructions).unwrap()).unwrap());
+    let json_instructions = serde_json::to_string_pretty(&serde_json::to_value(instructions.clone()).unwrap()).unwrap();
+    assert_eq!(parse_json(&json_instructions).unwrap(), instructions);
 
     let mut exec = Executor::default();
     exec.push(Elem::Json(serde_json::from_str(input_json).unwrap()));
-    // serde_json::from_value::<Instructions>(serde_json::from_str(json_instructions).unwrap()).unwrap()
     exec.consume(instructions)
         .expect("error processing instructions");
 

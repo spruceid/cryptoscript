@@ -8,7 +8,29 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
+// TODO: for demo:
+// - step through / display steps better
+// - support signatures:
+//   + check_sig
+//   + to_pub_key
+
 // TODO: property based tests
+
+// TODO: Bool/Number primitives
+
+// Bool(bool),
+// - neg
+// - and
+// - or
+
+// Number(Number), -->> later
+// - to_int
+// - add
+// - sub
+// - mul
+// - div
+
+
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Elem {
@@ -448,24 +470,7 @@ mod elem_symbol_tests {
     }
 }
 
-
-
-// TODO: Bool/Number primitives
-
-// Bool(bool),
-// - neg
-// - and
-// - or
-
-// Number(Number), -->> later
-// - to_int
-// - add
-// - sub
-// - mul
-// - div
-
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum Instruction {
     Push(Elem),
     FnRestack(Restack),
