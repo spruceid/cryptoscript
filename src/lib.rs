@@ -1,5 +1,5 @@
 mod types;
-pub use types::{Elem, Instructions};
+pub use types::{Elem, Instruction, Instructions, Restack};
 
 mod parse;
 pub use parse::parse;

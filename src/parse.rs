@@ -54,6 +54,7 @@ impl Elem {
             Self::String(_) => "String",
             Self::Array(_) => "Array",
             Self::Object(_) => "Object",
+            Self::Json(_) => "JSON",
         }
     }
 }
@@ -115,3 +116,4 @@ pub enum ParseError {
     #[error("error from serde_json ({0})")]
     SerdeJsonError(serde_json::Error),
 }
+
