@@ -70,7 +70,8 @@ fn main() {
         "#;
 
     // let json_instructions = parse_json()"
-    let _instructions: Instructions = vec![
+    let instructions: Instructions = vec![
+
         Instruction::FnObjectFromJson,
         Instruction::FnRestack(Restack::dup()),
 
@@ -144,217 +145,22 @@ fn main() {
         Instruction::Push(Elem::String("address".to_string())),
         Instruction::FnLookup,
         Instruction::FnStringFromJson,
+
+        Instruction::FnRestack(Restack::drop()),
         Instruction::Push(Elem::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string())),
-        Instruction::FnCheckLe,
+        Instruction::FnRestack(Restack::dup()),
+        Instruction::FnCheckEq,
         Instruction::FnAssertTrue,
 
     ];
-
-    let json_instructions = r#"
-        [
-          "FnObjectFromJson",
-          {
-            "FnRestack": {
-              "restack_depth": 1,
-              "restack_vec": [
-                0,
-                0
-              ]
-            }
-          },
-          {
-            "Push": {
-              "String": "queries"
-            }
-          },
-          "FnLookup",
-          "FnArrayFromJson",
-          {
-            "Push": {
-              "Number": 0
-            }
-          },
-          "FnIndex",
-          "FnObjectFromJson",
-          {
-            "FnRestack": {
-              "restack_depth": 1,
-              "restack_vec": [
-                0,
-                0
-              ]
-            }
-          },
-          {
-            "Push": {
-              "String": "action"
-            }
-          },
-          "FnLookup",
-          "FnStringFromJson",
-          {
-            "Push": {
-              "String": "tokenbalance"
-            }
-          },
-          "FnCheckLe",
-          "FnAssertTrue",
-          {
-            "FnRestack": {
-              "restack_depth": 1,
-              "restack_vec": [
-                0,
-                0
-              ]
-            }
-          },
-          {
-            "Push": {
-              "String": "contractaddress"
-            }
-          },
-          "FnLookup",
-          "FnStringFromJson",
-          {
-            "Push": {
-              "String": "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
-            }
-          },
-          "FnCheckLe",
-          "FnAssertTrue",
-          {
-            "FnRestack": {
-              "restack_depth": 1,
-              "restack_vec": [
-                0,
-                0
-              ]
-            }
-          },
-          {
-            "Push": {
-              "String": "response"
-            }
-          },
-          "FnLookup",
-          "FnObjectFromJson",
-          {
-            "Push": {
-              "String": "result"
-            }
-          },
-          "FnLookup",
-          "FnStringFromJson",
-          {
-            "Push": {
-              "String": "135499"
-            }
-          },
-          "FnCheckLe",
-          "FnAssertTrue",
-          {
-            "FnRestack": {
-              "restack_depth": 1,
-              "restack_vec": []
-            }
-          },
-          {
-            "Push": {
-              "String": "prompts"
-            }
-          },
-          "FnLookup",
-          "FnArrayFromJson",
-          {
-            "Push": {
-              "Number": 0
-            }
-          },
-          "FnIndex",
-          "FnObjectFromJson",
-          {
-            "FnRestack": {
-              "restack_depth": 1,
-              "restack_vec": [
-                0,
-                0
-              ]
-            }
-          },
-          {
-            "Push": {
-              "String": "action"
-            }
-          },
-          "FnLookup",
-          "FnStringFromJson",
-          {
-            "Push": {
-              "String": "siwe"
-            }
-          },
-          "FnCheckLe",
-          "FnAssertTrue",
-          {
-            "FnRestack": {
-              "restack_depth": 1,
-              "restack_vec": [
-                0,
-                0
-              ]
-            }
-          },
-          {
-            "Push": {
-              "String": "version"
-            }
-          },
-          "FnLookup",
-          "FnStringFromJson",
-          {
-            "Push": {
-              "String": "1.1.0"
-            }
-          },
-          "FnCheckLe",
-          "FnAssertTrue",
-          {
-            "Push": {
-              "String": "data"
-            }
-          },
-          "FnLookup",
-          "FnObjectFromJson",
-          {
-            "Push": {
-              "String": "fields"
-            }
-          },
-          "FnLookup",
-          "FnObjectFromJson",
-          {
-            "Push": {
-              "String": "address"
-            }
-          },
-          "FnLookup",
-          "FnStringFromJson",
-          {
-            "Push": {
-              "String": "0xe04f27eb70e025b78871a2ad7eabe85e61212761"
-            }
-          },
-          "FnCheckLe",
-          "FnAssertTrue"
-        ]
-    "#;
 
     // assert_eq!(serde_json::from_value::<Instructions>(serde_json::from_str(json_instructions).unwrap()).unwrap().into_iter(), instructions);
     // println!("{}", serde_json::to_string_pretty(&serde_json::to_value(instructions).unwrap()).unwrap());
 
     let mut exec = Executor::default();
     exec.push(Elem::Json(serde_json::from_str(input_json).unwrap()));
-    exec.consume(serde_json::from_value::<Instructions>(serde_json::from_str(json_instructions).unwrap()).unwrap())
+    // serde_json::from_value::<Instructions>(serde_json::from_str(json_instructions).unwrap()).unwrap()
+    exec.consume(instructions)
         .expect("error processing instructions");
 
     println!("FINAL STACK");

@@ -1,6 +1,7 @@
+mod restack;
+pub use restack::Restack;
 mod types;
-pub use types::{Elem, Instruction, Instructions, Restack};
-
+pub use types::{Elem, Instruction, Instructions};
 mod parse;
 pub use parse::parse;
 mod executor;

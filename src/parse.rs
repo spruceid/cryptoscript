@@ -38,7 +38,7 @@ fn parse_instruction(term: &str) -> Result<Instruction, ParseError> {
     }
     match term {
         "assert_true" => Ok(Instruction::FnAssertTrue),
-        "check_equal" => Ok(Instruction::FnCheckEqual),
+        "check_equal" => Ok(Instruction::FnCheckEq),
         "hash_sha256" => Ok(Instruction::FnHashSha256),
         _ => Err(ParseError::UnsupportedInstruction(term.to_string())),
     }

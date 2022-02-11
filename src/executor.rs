@@ -1,5 +1,5 @@
-use crate::types::{Elem, ElemError, Instruction, Instructions, Restack, RestackError};
-
+use crate::restack::{Restack, RestackError};
+use crate::types::{Elem, ElemError, Instruction, Instructions};
 use thiserror::Error;
 
 // TODO: implement n-step executor && errors that tell you what step they're on
@@ -21,7 +21,7 @@ impl Executor {
                 Instruction::FnAssertTrue => self.assert_true()?,
                 Instruction::FnCheckLe => self.check_le()?,
                 Instruction::FnCheckLt => self.check_lt()?,
-                Instruction::FnCheckEqual => self.check_equal()?,
+                Instruction::FnCheckEq => self.check_eq()?,
                 Instruction::FnConcat => self.concat()?,
                 Instruction::FnSlice => self.slice()?,
                 Instruction::FnIndex => self.index()?,
@@ -82,10 +82,10 @@ impl Executor {
         Ok(())
     }
 
-    fn check_equal(&mut self) -> Result<(), ExecError> {
+    fn check_eq(&mut self) -> Result<(), ExecError> {
         let one = self.pop()?;
         let other = self.pop()?;
-        self.push(one.check_lt(other)?);
+        self.push(one.check_eq(other)?);
         Ok(())
     }
 
