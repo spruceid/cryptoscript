@@ -11,7 +11,10 @@ pub struct Executor {
 
 impl Executor {
     pub fn consume(&mut self, expressions: Instructions) -> Result<(), ExecError> {
+        self.debug()?;
         for expr in expressions {
+            println!("------------------------------------------------------------------------------------------");
+            println!("#: {:?}", expr);
             match expr {
                 Instruction::Push(elem) => self.push(elem),
                 Instruction::FnRestack(restack) => self.restack(restack)?,
@@ -30,12 +33,24 @@ impl Executor {
                 Instruction::FnArrayFromJson => self.array_from_json()?,
                 Instruction::FnStringFromJson => self.string_from_json()?,
             }
+            self.debug()?;
+        }
+        Ok(())
+    }
+
+    pub fn debug(&self) -> Result<(), ExecError> {
+        println!("------------------------------------------------------------------------------------------");
+        for stack_elem in &self.stack {
+            println!("------------------------------");
+            println!("{}", serde_json::to_string_pretty(stack_elem)?)
         }
         Ok(())
     }
 
     pub fn push(&mut self, elem: Elem) {
-        self.stack.push(elem)
+        let mut memo = vec![elem];
+        memo.append(&mut self.stack.clone());
+        self.stack = memo;
     }
 
     fn restack(&mut self, restack: Restack) -> Result<(), ExecError> {
@@ -144,7 +159,10 @@ impl Executor {
     // TODO: since pop can fail, require passing debug info to it
     // (so we know what we were expecting)
     fn pop(&mut self) -> Result<Elem, ExecError> {
-        self.stack.pop().ok_or_else(|| ExecError::EmptyStack)
+        // self.stack.pop().ok_or_else(|| ExecError::EmptyStack)
+        let result = self.stack.get(0).ok_or_else(|| ExecError::EmptyStack).map(|x|x.clone())?;
+        self.stack = self.stack.drain(1..).collect();
+        Ok(result.clone())
     }
 
 }
@@ -162,6 +180,12 @@ pub enum ExecError {
 impl From<ElemError> for ExecError {
     fn from(error: ElemError) -> Self {
         ExecError::ElemError(error)
+    }
+}
+
+impl From<serde_json::Error> for ExecError {
+    fn from(error: serde_json::Error) -> Self {
+        ExecError::ElemError(ElemError::ToFromJsonFailed(format!("{}", error)))
     }
 }
 
