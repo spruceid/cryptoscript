@@ -282,6 +282,13 @@ impl Elem {
         }
     }
 
+    pub fn string_to_bytes(self) -> Result<Self, ElemError> {
+        match self {
+            Self::String(x) => Ok(Self::Bytes(x.into_bytes())),
+            other => Err(ElemError::StringToBytesUnsupportedType(&other.simple_type())),
+        }
+    }
+
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -393,6 +400,9 @@ pub enum ElemError {
     StringFromJsonUnsupportedType(&'static str),
     #[error("string_from_json applied unexpected JSON: ({0})")]
     StringFromJsonUnexpecteJson(Value),
+
+    #[error("string_to_bytes applied to an Elem of an unsupported type ({0})")]
+    StringToBytesUnsupportedType(&'static str),
 }
 
 impl From<serde_json::Error> for ElemError {
@@ -488,6 +498,7 @@ pub enum Instruction {
     ObjectFromJson,
     ArrayFromJson,
     StringFromJson,
+    StringToBytes,
 }
 
 pub type Instructions = Vec<Instruction>;

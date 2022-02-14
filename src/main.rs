@@ -144,7 +144,7 @@ fn main() {
         Instruction::AssertTrue,
 
         // x["data"]["fields"]["address"] = "0xe04f27eb70e025b78871a2ad7eabe85e61212761"
-        // Instruction::Restack(Restack::dup()),
+        Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("data".to_string())),
         Instruction::Lookup,
         Instruction::ObjectFromJson,
@@ -155,6 +155,19 @@ fn main() {
         Instruction::Lookup,
         Instruction::StringFromJson,
         Instruction::Push(Elem::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string())),
+        Instruction::CheckEq,
+        Instruction::AssertTrue,
+
+        // sha256(x["data"]["message"]) = "[204,12,100,29,52,72,110,177,12,176,128,217,129,34,90,130,30,118,140,1,174,107,100,122,192,144,105,103,119,242,86,249]"
+        Instruction::Push(Elem::String("data".to_string())),
+        Instruction::Lookup,
+        Instruction::ObjectFromJson,
+        Instruction::Push(Elem::String("message".to_string())),
+        Instruction::Lookup,
+        Instruction::StringFromJson,
+        Instruction::StringToBytes,
+        Instruction::HashSha256,
+        Instruction::Push(Elem::Bytes(vec![204,12,100,29,52,72,110,177,12,176,128,217,129,34,90,130,30,118,140,1,174,107,100,122,192,144,105,103,119,242,86,249])),
         Instruction::CheckEq,
         Instruction::AssertTrue,
 

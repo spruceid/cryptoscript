@@ -32,6 +32,7 @@ impl Executor {
                 Instruction::ObjectFromJson => self.object_from_json()?,
                 Instruction::ArrayFromJson => self.array_from_json()?,
                 Instruction::StringFromJson => self.string_from_json()?,
+                Instruction::StringToBytes => self.string_to_bytes()?,
             }
             self.debug()?;
         }
@@ -153,6 +154,12 @@ impl Executor {
     fn string_from_json(&mut self) -> Result<(), ExecError> {
         let string_from_json_input = self.pop()?;
         self.push(Elem::string_from_json(string_from_json_input)?);
+        Ok(())
+    }
+
+    fn string_to_bytes(&mut self) -> Result<(), ExecError> {
+        let string_to_bytes_input = self.pop()?;
+        self.push(Elem::string_to_bytes(string_to_bytes_input)?);
         Ok(())
     }
 
