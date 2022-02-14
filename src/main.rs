@@ -71,85 +71,92 @@ fn main() {
     // let json_instructions = parse_json()"
     let instructions: Instructions = vec![
 
-        Instruction::FnObjectFromJson,
-        Instruction::FnRestack(Restack::dup()),
+        Instruction::ObjectFromJson,
+        Instruction::Restack(Restack::dup()),
 
+        // x["queries"]
         Instruction::Push(Elem::String("queries".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnArrayFromJson,
+        Instruction::Lookup,
+        Instruction::ArrayFromJson,
 
+        // x[0]
         Instruction::Push(Elem::Number(From::from(0u8))),
-        Instruction::FnIndex,
-        Instruction::FnObjectFromJson,
+        Instruction::Index,
+        Instruction::ObjectFromJson,
 
-        Instruction::FnRestack(Restack::dup()),
+        // x["action"] = "tokenbalance"
+        Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("action".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnStringFromJson,
+        Instruction::Lookup,
+        Instruction::StringFromJson,
         Instruction::Push(Elem::String("tokenbalance".to_string())),
-        Instruction::FnCheckLe,
-        Instruction::FnAssertTrue,
+        Instruction::CheckEq,
+        Instruction::AssertTrue,
 
-        Instruction::FnRestack(Restack::dup()),
+        // x["contractaddress"] = "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
+        Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("contractaddress".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnStringFromJson,
+        Instruction::Lookup,
+        Instruction::StringFromJson,
         Instruction::Push(Elem::String("0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string())),
-        Instruction::FnCheckLe,
-        Instruction::FnAssertTrue,
+        Instruction::CheckEq,
+        Instruction::AssertTrue,
 
-        Instruction::FnRestack(Restack::dup()),
+        // x["response"]["result"] = "135499"
+        Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("response".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnObjectFromJson,
+        Instruction::Lookup,
+        Instruction::ObjectFromJson,
         Instruction::Push(Elem::String("result".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnStringFromJson,
+        Instruction::Lookup,
+        Instruction::StringFromJson,
         Instruction::Push(Elem::String("135499".to_string())),
-        Instruction::FnCheckLe,
-        Instruction::FnAssertTrue,
+        Instruction::CheckEq,
+        Instruction::AssertTrue,
 
-        Instruction::FnRestack(Restack::drop()),
+        // x["prompts"]
+        Instruction::Restack(Restack::drop()),
         Instruction::Push(Elem::String("prompts".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnArrayFromJson,
+        Instruction::Lookup,
+        Instruction::ArrayFromJson,
 
+        // x[0]
         Instruction::Push(Elem::Number(From::from(0u8))),
-        Instruction::FnIndex,
-        Instruction::FnObjectFromJson,
+        Instruction::Index,
+        Instruction::ObjectFromJson,
 
-        Instruction::FnRestack(Restack::dup()),
+        // x["action"] = "siwe"
+        Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("action".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnStringFromJson,
+        Instruction::Lookup,
+        Instruction::StringFromJson,
         Instruction::Push(Elem::String("siwe".to_string())),
-        Instruction::FnCheckLe,
-        Instruction::FnAssertTrue,
+        Instruction::CheckEq,
+        Instruction::AssertTrue,
 
-        Instruction::FnRestack(Restack::dup()),
+        // x["version"] = "1.1.0"
+        Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("version".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnStringFromJson,
+        Instruction::Lookup,
+        Instruction::StringFromJson,
         Instruction::Push(Elem::String("1.1.0".to_string())),
-        Instruction::FnCheckLe,
-        Instruction::FnAssertTrue,
+        Instruction::CheckEq,
+        Instruction::AssertTrue,
 
-        // Instruction::FnRestack(Restack::dup()),
+        // x["data"]["fields"]["address"] = "0xe04f27eb70e025b78871a2ad7eabe85e61212761"
+        // Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("data".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnObjectFromJson,
+        Instruction::Lookup,
+        Instruction::ObjectFromJson,
         Instruction::Push(Elem::String("fields".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnObjectFromJson,
+        Instruction::Lookup,
+        Instruction::ObjectFromJson,
         Instruction::Push(Elem::String("address".to_string())),
-        Instruction::FnLookup,
-        Instruction::FnStringFromJson,
-
-        Instruction::FnRestack(Restack::drop()),
+        Instruction::Lookup,
+        Instruction::StringFromJson,
         Instruction::Push(Elem::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string())),
-        Instruction::FnRestack(Restack::dup()),
-        Instruction::FnCheckEq,
-        Instruction::FnAssertTrue,
+        Instruction::CheckEq,
+        Instruction::AssertTrue,
 
     ];
 

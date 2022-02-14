@@ -473,21 +473,21 @@ mod elem_symbol_tests {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum Instruction {
     Push(Elem),
-    FnRestack(Restack),
-    FnHashSha256,
-    FnCheckLe,
-    FnCheckLt,
-    FnCheckEq,
-    FnConcat,
-    FnSlice,
-    FnIndex, // Array
-    FnLookup, // Map
-    FnAssertTrue,
-    FnToJson,
-    FnFromJson,
-    FnObjectFromJson,
-    FnArrayFromJson,
-    FnStringFromJson,
+    Restack(Restack),
+    HashSha256,
+    CheckLe,
+    CheckLt,
+    CheckEq,
+    Concat,
+    Slice,
+    Index, // Array
+    Lookup, // Map
+    AssertTrue,
+    ToJson,
+    FromJson,
+    ObjectFromJson,
+    ArrayFromJson,
+    StringFromJson,
 }
 
 pub type Instructions = Vec<Instruction>;
