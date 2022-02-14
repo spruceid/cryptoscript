@@ -172,7 +172,7 @@ impl Elem {
         }
     }
 
-    pub fn check_le(&self, other: Self) -> Result<Self, ElemError> {
+    pub fn check_le(self, other: Self) -> Result<Self, ElemError> {
         let result = match self.partial_cmp(&other)
             .ok_or_else(|| ElemError::CheckLeIncomparableTypes {
                 lhs: self.symbol_str(),
@@ -184,7 +184,7 @@ impl Elem {
         Ok(Self::Bool(result))
     }
 
-    pub fn check_lt(&self, other: Self) -> Result<Self, ElemError> {
+    pub fn check_lt(self, other: Self) -> Result<Self, ElemError> {
         let result = match self.partial_cmp(&other)
             .ok_or_else(|| ElemError::CheckLtIncomparableTypes {
                 lhs: self.symbol_str(),

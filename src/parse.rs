@@ -15,7 +15,6 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-
 pub fn parse_json(input: &str) -> Result<Instructions, ParseError> {
     match serde_json::from_str(&input) {
         Err(serde_error) => Err(ParseError::SerdeJsonError(serde_error)),
