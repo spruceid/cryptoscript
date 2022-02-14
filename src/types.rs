@@ -30,8 +30,6 @@ use serde_json::{Map, Number, Value};
 // - mul
 // - div
 
-
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Elem {
     Unit,
@@ -59,7 +57,110 @@ impl PartialOrd for Elem {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ElemSymbol {
+    Unit,
+    Bool,
+    Number,
+    Bytes,
+    String,
+    Array,
+    Object,
+    Json,
+}
+
+impl From<ElemSymbol> for &'static str {
+    fn from(x: ElemSymbol) -> Self {
+        match x {
+            ElemSymbol::Unit => "Unit",
+            ElemSymbol::Bool => "Bool",
+            ElemSymbol::Bytes => "Bytes",
+            ElemSymbol::Number => "Number",
+            ElemSymbol::String => "String",
+            ElemSymbol::Array => "Array",
+            ElemSymbol::Object => "Object",
+            ElemSymbol::Json => "JSON",
+        }
+    }
+}
+
+impl From<&Elem> for ElemSymbol {
+    fn from(x: &Elem) -> Self {
+        match x {
+            Elem::Unit => Self::Unit,
+            Elem::Bool(_) => Self::Bool,
+            Elem::Number(_) => Self::Number,
+            Elem::Bytes(_) => Self::Bytes,
+            Elem::String(_) => Self::String,
+            Elem::Array(_) => Self::Array,
+            Elem::Object(_) => Self::Object,
+            Elem::Json(_) => Self::Json,
+        }
+    }
+}
+
+#[cfg(test)]
+impl ElemSymbol {
+    pub fn default_elem(&self) -> Elem {
+        match self {
+            Self::Unit => Elem::Unit,
+            Self::Bool => Elem::Bool(Default::default()),
+            Self::Number => Elem::Number(Default::default()),
+            Self::Bytes => Elem::Bytes(Default::default()),
+            Self::String => Elem::String(Default::default()),
+            Self::Array => Elem::Array(Default::default()),
+            Self::Object => Elem::Object(Default::default()),
+            Self::Json => Elem::Json(Default::default()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod elem_symbol_tests {
+    use super::*;
+
+    #[test]
+    fn test_from_default_elem() {
+        for symbol in [
+            ElemSymbol::Unit,
+            ElemSymbol::Bool,
+            ElemSymbol::Number,
+            ElemSymbol::Bytes,
+            ElemSymbol::String,
+            ElemSymbol::Array,
+            ElemSymbol::Object,
+            ElemSymbol::Json,
+        ] {
+            assert_eq!(symbol, From::from(symbol.default_elem()))
+        }
+    }
+
+    #[test]
+    fn test_to_default_elem() {
+        for default_elem in [
+          Elem::Unit,
+          Elem::Bool(Default::default()),
+          Elem::Number(Default::default()),
+          Elem::Bytes(Default::default()),
+          Elem::String(Default::default()),
+          Elem::Array(Default::default()),
+          Elem::Object(Default::default()),
+          Elem::Json(Default::default()),
+        ] {
+            assert_eq!(default_elem, From::from(default_elem).default_elem())
+        }
+    }
+}
+
 impl Elem {
+    pub fn symbol(&self) -> ElemSymbol {
+      From::from(self)
+    }
+
+    pub fn symbol_str(&self) -> &'static str {
+      From::from(self.symbol())
+    }
+
     pub fn assert_true(&self) -> Result<(), ElemError> {
         match self {
             Self::Bool(x) => if *x {
@@ -74,8 +175,8 @@ impl Elem {
     pub fn check_le(&self, other: Self) -> Result<Self, ElemError> {
         let result = match self.partial_cmp(&other)
             .ok_or_else(|| ElemError::CheckLeIncomparableTypes {
-                lhs: self.simple_type(),
-                rhs: other.simple_type() })? {
+                lhs: self.symbol_str(),
+                rhs: other.symbol_str() })? {
                     cmp::Ordering::Less => true,
                     cmp::Ordering::Equal => true,
                     cmp::Ordering::Greater => false,
@@ -86,8 +187,8 @@ impl Elem {
     pub fn check_lt(&self, other: Self) -> Result<Self, ElemError> {
         let result = match self.partial_cmp(&other)
             .ok_or_else(|| ElemError::CheckLtIncomparableTypes {
-                lhs: self.simple_type(),
-                rhs: other.simple_type() })? {
+                lhs: self.symbol_str(),
+                rhs: other.symbol_str() })? {
                     cmp::Ordering::Less => true,
                     _ => false,
         };
@@ -97,8 +198,8 @@ impl Elem {
     pub fn check_eq(self, other: Self) -> Result<Self, ElemError> {
         let result = match self.partial_cmp(&other)
             .ok_or_else(|| ElemError::CheckEqIncomparableTypes {
-                lhs: self.simple_type(),
-                rhs: other.simple_type() })? {
+                lhs: self.symbol_str(),
+                rhs: other.symbol_str() })? {
                     cmp::Ordering::Equal => true,
                     _ => false,
         };
@@ -120,15 +221,19 @@ impl Elem {
             (Self::Object(x), Self::Object(y)) => Ok(Self::Object(Self::concat_generic(x, y))),
             (some_x, some_y) => {
                 Err(ElemError::ConcatUnsupportedTypes {
-                    lhs: &some_x.simple_type(),
-                    rhs: &some_y.simple_type()
+                    lhs: some_x.symbol_str(),
+                    rhs: some_y.symbol_str()
                 })
             },
         }
     }
 
-
-    fn slice_generic<T: Clone + IntoIterator + std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(offset: Number, length: Number, iterable: T) -> Result<T, ElemError> {
+    fn slice_generic<T: Clone + IntoIterator +
+      std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(offset: Number,
+                                                                     length: Number,
+                                                                     iterable: T,
+                                                                     elem_symbol: ElemSymbol) ->
+        Result<T, ElemError> {
         let u_offset = offset.as_u64()
             .ok_or_else(|| ElemError::SliceOffsetNotU64(offset.clone()))
             .and_then(|x| usize::try_from(x).map_err(|_| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() }))?;
@@ -138,14 +243,11 @@ impl Elem {
         let u_offset_plus_length = u_offset.checked_add(u_length)
             .ok_or_else(|| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() })?;
         if iterable.clone().into_iter().count() < u_offset_plus_length {
-            panic!("slice_generic SliceTooShort unimplemented")
-
-            // TODO: implement proper error
-            // Err(ElemError::SliceTooShort {
-            //     offset: u_offset,
-            //     length: u_length,
-            //     iterable: &Self::Bytes(vec![]).simple_type(),
-            // })
+            Err(ElemError::SliceTooShort {
+                offset: u_offset,
+                length: u_length,
+                iterable: From::from(elem_symbol),
+            })
         } else {
             Ok(iterable.into_iter().skip(u_offset).take(u_length).collect())
         }
@@ -154,38 +256,42 @@ impl Elem {
     pub fn slice(maybe_offset: Self, maybe_length: Self, maybe_iterable: Self) -> Result<Self, ElemError> {
         match (maybe_offset, maybe_length, maybe_iterable) {
             (Self::Number(offset), Self::Number(length), Self::Bytes(iterator)) =>
-                Ok(Self::Bytes(Self::slice_generic(offset, length, iterator)?)),
+                Ok(Self::Bytes(Self::slice_generic(offset, length, iterator, ElemSymbol::Bytes)?)),
             (Self::Number(offset), Self::Number(length), Self::String(iterator)) => {
                 let iterator_vec = Vec::from(iterator.clone());
-                Ok(Self::String(String::from_utf8(Self::slice_generic(offset.clone(), length.clone(), iterator_vec)?)
+                Ok(Self::String(String::from_utf8(Self::slice_generic(offset.clone(), length.clone(), iterator_vec, ElemSymbol::String)?)
                         .map_err(|_| ElemError::SliceInvalidUTF8 { offset: offset, length: length, iterator: iterator })?))
                 },
             (Self::Number(offset), Self::Number(length), Self::Array(iterator)) =>
-                Ok(Self::Array(Self::slice_generic(offset, length, iterator)?)),
+                Ok(Self::Array(Self::slice_generic(offset, length, iterator, ElemSymbol::Number)?)),
             (Self::Number(offset), Self::Number(length), Self::Object(iterator)) =>
-                Ok(Self::Object(Self::slice_generic(offset, length, iterator)?)),
+                Ok(Self::Object(Self::slice_generic(offset, length, iterator, ElemSymbol::Object)?)),
             (maybe_not_offset, maybe_not_length, maybe_not_iterable) => {
                 Err(ElemError::SliceUnsupportedTypes {
-                    maybe_not_offset: &maybe_not_offset.simple_type(),
-                    maybe_not_length: &maybe_not_length.simple_type(),
-                    maybe_not_iterable: &maybe_not_iterable.simple_type(),
+                    maybe_not_offset: maybe_not_offset.symbol_str(),
+                    maybe_not_length: maybe_not_length.symbol_str(),
+                    maybe_not_iterable: maybe_not_iterable.symbol_str(),
                 })
             }
         }
     }
 
-    fn index_generic<T: Clone + IntoIterator + std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(index: Number, iterable: T) -> Result<<T as std::iter::IntoIterator>::Item, ElemError> {
+    fn index_generic<T: Clone + IntoIterator +
+        std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(index: Number,
+                                                                       iterable: T,
+                                                                       elem_symbol: ElemSymbol) ->
+      Result<<T as std::iter::IntoIterator>::Item, ElemError> {
         let u_index: usize = index.as_u64()
             .ok_or_else(|| ElemError::IndexNotU64(index.clone()))
             .and_then(|x| usize::try_from(x).map_err(|_| ElemError::IndexOverflow(index.clone())))?;
         if iterable.clone().into_iter().count() <= u_index {
             return Err(ElemError::IndexTooShort {
                 index: u_index,
-                iterable: &Self::Bytes(vec![]).simple_type(),
+                iterable: From::from(elem_symbol),
             })
         } else {
             match iterable.into_iter().skip(u_index).next() {
-                None => Err(ElemError::IndexTooShort { index: u_index, iterable: &Self::Bytes(vec![]).simple_type() }),
+                None => Err(ElemError::IndexTooShort { index: u_index, iterable: From::from(elem_symbol) }),
                 Some(x) => Ok(x),
             }
         }
@@ -193,21 +299,16 @@ impl Elem {
 
     pub fn index(self, maybe_iterable: Self) -> Result<Self, ElemError> {
         match (self, maybe_iterable) {
-            // (Self::Number(index), Self::Bytes(iterator)) =>
-            //     Ok(Self::Bytes(Self::slice_index(index, length, iterator)?)),
-            // (Self::Number(index), Self::String(iterator)) => {
-            //     let iterator_vec = Vec::from(iterator.clone());
-            //     Ok(Self::String(String::from_utf8(Self::slice_generic(index.clone(), length.clone(), iterator_vec)?)
-            //             .map_err(|_| ElemError::SliceInvalidUTF8 { index: index, length: length, iterator: iterator })?))
-            //     },
+            (Self::Number(index), Self::Bytes(iterator)) =>
+                Ok(Self::Bytes(vec![Self::index_generic(index, iterator, ElemSymbol::Bytes)?])),
             (Self::Number(index), Self::Array(iterator)) =>
-                Ok(Self::Json(Self::index_generic(index, iterator)?)),
+                Ok(Self::Json(Self::index_generic(index, iterator, ElemSymbol::Json)?)),
             (Self::Number(index), Self::Object(iterator)) =>
-                Ok(Self::Json(Self::index_generic(index, iterator)?.1)),
+                Ok(Self::Json(Self::index_generic(index, iterator, ElemSymbol::Object)?.1)),
             (maybe_not_index, maybe_not_iterable) => {
                 Err(ElemError::IndexUnsupportedTypes {
-                    maybe_not_index: &maybe_not_index.simple_type(),
-                    maybe_not_iterable: &maybe_not_iterable.simple_type(),
+                    maybe_not_index: maybe_not_index.symbol_str(),
+                    maybe_not_iterable: maybe_not_iterable.symbol_str(),
                 })
             }
         }
@@ -225,8 +326,8 @@ impl Elem {
                     .map(|x|x.clone())?))
             },
             (maybe_not_key, maybe_not_map) => Err(ElemError::LookupUnsupportedTypes {
-                maybe_not_key: &maybe_not_key.simple_type(),
-                maybe_not_map: &maybe_not_map.simple_type(),
+                maybe_not_key: maybe_not_key.symbol_str(),
+                maybe_not_map: maybe_not_map.symbol_str(),
             }),
         }
     }
@@ -236,7 +337,7 @@ impl Elem {
             Self::Bytes(bytes) => {
                 Ok(Self::Bytes(super::sha256(&bytes)))
             }
-            elem => Err(ElemError::HashUnsupportedType(elem.simple_type())),
+            elem => Err(ElemError::HashUnsupportedType(elem.symbol_str())),
         }
     }
 
@@ -247,48 +348,35 @@ impl Elem {
     pub fn from_json(self) -> Result<Self, ElemError> {
         match self {
             Self::Json(raw_json) => Ok(serde_json::from_value(raw_json)?),
-            non_json => Err(ElemError::FromJsonUnsupportedType(&non_json.simple_type())),
+            non_json => Err(ElemError::FromJsonUnsupportedType(non_json.symbol_str())),
         }
     }
 
-    // pub fn unit_from_json(self) -> Result<Self, ElemError> {
-    //     match self {
-    //         Self::Json(serde_json::Null) => Ok(Elem::Unit),
-    //         other => Err(ElemError::UnitFromJsonUnsupportedType(&other.simple_type())),
-    //     }
-    // }
-
-    pub fn object_from_json(self) -> Result<Self, ElemError> {
-        match self {
-            Self::Json(serde_json::Value::Object(x)) => Ok(Elem::Object(x)),
-            Self::Json(x) => Err(ElemError::ObjectFromJsonUnexpecteJson(x)),
-            other => Err(ElemError::ObjectFromJsonUnsupportedType(&other.simple_type())),
-        }
-    }
-
-    pub fn array_from_json(self) -> Result<Self, ElemError> {
-        match self {
-            Self::Json(serde_json::Value::Array(x)) => Ok(Elem::Array(x)),
-            Self::Json(x) => Err(ElemError::ArrayFromJsonUnexpecteJson(x)),
-            other => Err(ElemError::ArrayFromJsonUnsupportedType(&other.simple_type())),
-        }
-    }
-
-    pub fn string_from_json(self) -> Result<Self, ElemError> {
-        match self {
-            Self::Json(serde_json::Value::String(x)) => Ok(Elem::String(x)),
-            Self::Json(x) => Err(ElemError::StringFromJsonUnexpecteJson(x)),
-            other => Err(ElemError::StringFromJsonUnsupportedType(&other.simple_type())),
+    pub fn unpack_json(self, elem_symbol: ElemSymbol) -> Result<Self, ElemError> {
+        match (self, elem_symbol) {
+            (Self::Json(serde_json::Value::Null), ElemSymbol::Unit) => Ok(Self::Unit),
+            (Self::Json(serde_json::Value::Bool(x)), ElemSymbol::Bool) => Ok(Self::Bool(x)),
+            (Self::Json(serde_json::Value::Number(x)), ElemSymbol::Number) => Ok(Self::Number(x)),
+            (Self::Json(serde_json::Value::String(x)), ElemSymbol::String) => Ok(Self::String(x)),
+            (Self::Json(serde_json::Value::Array(x)), ElemSymbol::Array) => Ok(Self::Array(x)),
+            (Self::Json(serde_json::Value::Object(x)), ElemSymbol::Object) => Ok(Self::Object(x)),
+            (Self::Json(json), elem_symbol) => Err(ElemError::UnpackJsonUnsupportedSymbol {
+              json: json,
+              elem_symbol: From::from(elem_symbol),
+            }),
+            (non_json, _) => Err(ElemError::UnpackJsonUnexpectedType {
+                  non_json: non_json.symbol_str(),
+                  elem_symbol: From::from(elem_symbol),
+            }),
         }
     }
 
     pub fn string_to_bytes(self) -> Result<Self, ElemError> {
         match self {
             Self::String(x) => Ok(Self::Bytes(x.into_bytes())),
-            other => Err(ElemError::StringToBytesUnsupportedType(&other.simple_type())),
+            other => Err(ElemError::StringToBytesUnsupportedType(other.symbol_str())),
         }
     }
-
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -401,6 +489,17 @@ pub enum ElemError {
     #[error("string_from_json applied unexpected JSON: ({0})")]
     StringFromJsonUnexpecteJson(Value),
 
+    #[error("unpack_json applied to a value that's not raw JSON or it didn't match the expected type: {non_json:?}; type: {elem_symbol:?}")]
+    UnpackJsonUnexpectedType {
+        non_json: &'static str,
+        elem_symbol: &'static str,
+    },
+    #[error("unpack_json applied to raw JSON and an unsupported type: {json:?}; type: {elem_symbol:?}")]
+    UnpackJsonUnsupportedSymbol {
+      json: serde_json::Value,
+      elem_symbol: &'static str,
+    },
+
     #[error("string_to_bytes applied to an Elem of an unsupported type ({0})")]
     StringToBytesUnsupportedType(&'static str),
 }
@@ -408,75 +507,6 @@ pub enum ElemError {
 impl From<serde_json::Error> for ElemError {
     fn from(error: serde_json::Error) -> Self {
         ElemError::ToFromJsonFailed(format!("{}", error))
-    }
-}
-
-
-
-
-// TODO: implement simple_type on this instead of Elem
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ElemSymbol {
-    UnitSymbol,
-    BoolSymbol,
-    NumberSymbol,
-    BytesSymbol,
-    StringSymbol,
-    ArraySymbol,
-    ObjectSymbol,
-    JsonSymbol,
-}
-
-impl From<Elem> for ElemSymbol {
-    fn from(x: Elem) -> Self {
-        match x {
-            Elem::Unit => Self::UnitSymbol,
-            Elem::Bool(_) => Self::BoolSymbol,
-            Elem::Number(_) => Self::NumberSymbol,
-            Elem::Bytes(_) => Self::BytesSymbol,
-            Elem::String(_) => Self::StringSymbol,
-            Elem::Array(_) => Self::ArraySymbol,
-            Elem::Object(_) => Self::ObjectSymbol,
-            Elem::Json(_) => Self::JsonSymbol,
-        }
-    }
-}
-
-#[cfg(test)]
-impl ElemSymbol {
-    // TODO: synchronize with Default trait
-    pub fn default_elem(self) -> Elem {
-        match self {
-            Self::UnitSymbol => Elem::Unit,
-            Self::BoolSymbol => Elem::Bool(false),
-            Self::NumberSymbol => Elem::Number(From::from(0u8)),
-            Self::BytesSymbol => Elem::Bytes(vec![]),
-            Self::StringSymbol => Elem::String("".to_string()),
-            Self::ArraySymbol => Elem::Array(vec![]),
-            Self::ObjectSymbol => Elem::Object(Map::new()),
-            Self::JsonSymbol => Elem::Json(serde_json::Value::Null),
-        }
-    }
-}
-
-#[cfg(test)]
-mod elem_symbol_tests {
-    use super::*;
-
-    #[test]
-    fn test_from_default_elem() {
-        for symbol in [
-            ElemSymbol::UnitSymbol,
-            ElemSymbol::BoolSymbol,
-            ElemSymbol::NumberSymbol,
-            ElemSymbol::BytesSymbol,
-            ElemSymbol::StringSymbol,
-            ElemSymbol::ArraySymbol,
-            ElemSymbol::ObjectSymbol,
-            ElemSymbol::JsonSymbol,
-        ] {
-            assert_eq!(symbol, From::from(symbol.default_elem()))
-        }
     }
 }
 
@@ -490,14 +520,12 @@ pub enum Instruction {
     CheckEq,
     Concat,
     Slice,
-    Index, // Array
-    Lookup, // Map
+    Index,
+    Lookup,
     AssertTrue,
     ToJson,
     FromJson,
-    ObjectFromJson,
-    ArrayFromJson,
-    StringFromJson,
+    UnpackJson(ElemSymbol),
     StringToBytes,
 }
 

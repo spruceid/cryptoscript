@@ -44,21 +44,6 @@ fn parse_instruction(term: &str) -> Result<Instruction, ParseError> {
     }
 }
 
-impl Elem {
-    pub fn simple_type(&self) -> &'static str {
-        match self {
-            Self::Unit => "Unit",
-            Self::Bool(_) => "Bool",
-            Self::Bytes(_) => "Bytes",
-            Self::Number(_) => "Number",
-            Self::String(_) => "String",
-            Self::Array(_) => "Array",
-            Self::Object(_) => "Object",
-            Self::Json(_) => "JSON",
-        }
-    }
-}
-
 impl FromStr for Elem {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {

@@ -1,5 +1,5 @@
 use crate::restack::{Restack, RestackError};
-use crate::types::{Elem, ElemError, Instruction, Instructions};
+use crate::types::{Elem, ElemSymbol, ElemError, Instruction, Instructions};
 use thiserror::Error;
 
 // TODO: implement n-step executor && errors that tell you what step they're on
@@ -29,9 +29,7 @@ impl Executor {
                 Instruction::HashSha256 => self.sha256()?,
                 Instruction::ToJson => self.to_json()?,
                 Instruction::FromJson => self.from_json()?,
-                Instruction::ObjectFromJson => self.object_from_json()?,
-                Instruction::ArrayFromJson => self.array_from_json()?,
-                Instruction::StringFromJson => self.string_from_json()?,
+                Instruction::UnpackJson(elem_symbol) => self.unpack_json(elem_symbol)?,
                 Instruction::StringToBytes => self.string_to_bytes()?,
             }
             self.debug()?;
@@ -139,21 +137,9 @@ impl Executor {
         Ok(())
     }
 
-    fn object_from_json(&mut self) -> Result<(), ExecError> {
-        let object_from_json_input = self.pop()?;
-        self.push(Elem::object_from_json(object_from_json_input)?);
-        Ok(())
-    }
-
-    fn array_from_json(&mut self) -> Result<(), ExecError> {
-        let array_from_json_input = self.pop()?;
-        self.push(Elem::array_from_json(array_from_json_input)?);
-        Ok(())
-    }
-
-    fn string_from_json(&mut self) -> Result<(), ExecError> {
-        let string_from_json_input = self.pop()?;
-        self.push(Elem::string_from_json(string_from_json_input)?);
+    fn unpack_json(&mut self, elem_symbol: ElemSymbol) -> Result<(), ExecError> {
+        let unpack_json_input = self.pop()?;
+        self.push(Elem::unpack_json(unpack_json_input, elem_symbol)?);
         Ok(())
     }
 

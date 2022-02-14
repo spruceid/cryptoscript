@@ -1,4 +1,4 @@
-use cryptoscript::{parse_json, Elem, Executor, Instruction, Instructions, Restack};
+use cryptoscript::{parse_json, Elem, ElemSymbol, Executor, Instruction, Instructions, Restack};
 
 #[cfg(test)]
 mod tests {
@@ -71,24 +71,24 @@ fn main() {
     // let json_instructions = parse_json()"
     let instructions: Instructions = vec![
 
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
         Instruction::Restack(Restack::dup()),
 
         // x["queries"]
         Instruction::Push(Elem::String("queries".to_string())),
         Instruction::Lookup,
-        Instruction::ArrayFromJson,
+        Instruction::UnpackJson(ElemSymbol::Array),
 
         // x[0]
         Instruction::Push(Elem::Number(From::from(0u8))),
         Instruction::Index,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
 
         // x["action"] = "tokenbalance"
         Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("action".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::Push(Elem::String("tokenbalance".to_string())),
         Instruction::CheckEq,
         Instruction::AssertTrue,
@@ -97,7 +97,7 @@ fn main() {
         Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("contractaddress".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::Push(Elem::String("0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string())),
         Instruction::CheckEq,
         Instruction::AssertTrue,
@@ -106,10 +106,10 @@ fn main() {
         Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("response".to_string())),
         Instruction::Lookup,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
         Instruction::Push(Elem::String("result".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::Push(Elem::String("135499".to_string())),
         Instruction::CheckEq,
         Instruction::AssertTrue,
@@ -118,18 +118,18 @@ fn main() {
         Instruction::Restack(Restack::drop()),
         Instruction::Push(Elem::String("prompts".to_string())),
         Instruction::Lookup,
-        Instruction::ArrayFromJson,
+        Instruction::UnpackJson(ElemSymbol::Array),
 
         // x[0]
         Instruction::Push(Elem::Number(From::from(0u8))),
         Instruction::Index,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
 
         // x["action"] = "siwe"
         Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("action".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::Push(Elem::String("siwe".to_string())),
         Instruction::CheckEq,
         Instruction::AssertTrue,
@@ -138,7 +138,7 @@ fn main() {
         Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("version".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::Push(Elem::String("1.1.0".to_string())),
         Instruction::CheckEq,
         Instruction::AssertTrue,
@@ -147,13 +147,13 @@ fn main() {
         Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("data".to_string())),
         Instruction::Lookup,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
         Instruction::Push(Elem::String("fields".to_string())),
         Instruction::Lookup,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
         Instruction::Push(Elem::String("address".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::Push(Elem::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string())),
         Instruction::CheckEq,
         Instruction::AssertTrue,
@@ -162,10 +162,10 @@ fn main() {
         Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("data".to_string())),
         Instruction::Lookup,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
         Instruction::Push(Elem::String("message".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::StringToBytes,
         Instruction::HashSha256,
 
@@ -173,13 +173,13 @@ fn main() {
         Instruction::Restack(Restack::swap()),
         Instruction::Push(Elem::String("data".to_string())),
         Instruction::Lookup,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
         Instruction::Push(Elem::String("fields".to_string())),
         Instruction::Lookup,
-        Instruction::ObjectFromJson,
+        Instruction::UnpackJson(ElemSymbol::Object),
         Instruction::Push(Elem::String("address".to_string())),
         Instruction::Lookup,
-        Instruction::StringFromJson,
+        Instruction::UnpackJson(ElemSymbol::String),
         Instruction::StringToBytes,
         Instruction::HashSha256,
 
@@ -198,9 +198,9 @@ fn main() {
 
     let mut exec = Executor::default();
     exec.push(Elem::Json(serde_json::from_str(input_json).unwrap()));
-    exec.consume(instructions)
-        .expect("error processing instructions");
+    /* exec.consume(instructions) */
+    /*     .expect("error processing instructions"); */
 
-    println!("FINAL STACK");
+    /* println!("FINAL STACK"); */
     println!("{:?}", exec);
 }

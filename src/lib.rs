@@ -1,7 +1,7 @@
 mod restack;
 pub use restack::Restack;
 mod types;
-pub use types::{Elem, Instruction, Instructions};
+pub use types::{Elem, ElemSymbol, Instruction, Instructions};
 mod parse;
 pub use parse::{parse, parse_json};
 mod executor;
