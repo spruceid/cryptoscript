@@ -158,7 +158,8 @@ fn main() {
         Instruction::CheckEq,
         Instruction::AssertTrue,
 
-        // sha256(x["data"]["message"]) = "[204,12,100,29,52,72,110,177,12,176,128,217,129,34,90,130,30,118,140,1,174,107,100,122,192,144,105,103,119,242,86,249]"
+        // sha256(x["data"]["message"])
+        Instruction::Restack(Restack::dup()),
         Instruction::Push(Elem::String("data".to_string())),
         Instruction::Lookup,
         Instruction::ObjectFromJson,
@@ -167,7 +168,26 @@ fn main() {
         Instruction::StringFromJson,
         Instruction::StringToBytes,
         Instruction::HashSha256,
-        Instruction::Push(Elem::Bytes(vec![204,12,100,29,52,72,110,177,12,176,128,217,129,34,90,130,30,118,140,1,174,107,100,122,192,144,105,103,119,242,86,249])),
+
+        // sha256(x["data"]["fields"]["address"])
+        Instruction::Restack(Restack::swap()),
+        Instruction::Push(Elem::String("data".to_string())),
+        Instruction::Lookup,
+        Instruction::ObjectFromJson,
+        Instruction::Push(Elem::String("fields".to_string())),
+        Instruction::Lookup,
+        Instruction::ObjectFromJson,
+        Instruction::Push(Elem::String("address".to_string())),
+        Instruction::Lookup,
+        Instruction::StringFromJson,
+        Instruction::StringToBytes,
+        Instruction::HashSha256,
+
+        // sha256(sha256(x["data"]["message"]) ++ sha256(x["data"]["fields"]["address"])) =
+        //  [53,163,178,139,122,187,171,47,42,135,175,176,240,11,10,152,228,238,106,205,132,68,80,79,188,54,124,242,97,132,31,139]
+        Instruction::Concat,
+        Instruction::HashSha256,
+        Instruction::Push(Elem::Bytes(vec![53,163,178,139,122,187,171,47,42,135,175,176,240,11,10,152,228,238,106,205,132,68,80,79,188,54,124,242,97,132,31,139])),
         Instruction::CheckEq,
         Instruction::AssertTrue,
 
