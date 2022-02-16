@@ -8,12 +8,15 @@ use std::convert::TryFrom;
 // use std::iter::Chain;
 // use std::iter::Repeat;
 // use std::iter::Zip;
+// use std::iter::empty;
 use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
 use enumset::{EnumSet, EnumSetType};
+
+use quickcheck::{empty_shrinker, Arbitrary, Gen};
 
 // - readability:
 
@@ -54,6 +57,8 @@ impl PartialOrd for Elem {
             (Self::Bool(x), Self::Bool(y)) => x.partial_cmp(y),
             (Self::Bytes(x), Self::Bytes(y)) => x.partial_cmp(y),
             (Self::Number(x), Self::Number(y)) => format!("{}", x).partial_cmp(&format!("{}", y)),
+            // TODO: use x.to_string().partial_cmp(&y.to_string()),
+
             (Self::String(x), Self::String(y)) => x.partial_cmp(y),
             (Self::Array(x), Self::Array(y)) => if x == y { Some(cmp::Ordering::Equal) } else { None },
             (Self::Object(x), Self::Object(y)) => if x == y { Some(cmp::Ordering::Equal) } else { None }
@@ -61,6 +66,7 @@ impl PartialOrd for Elem {
         }
     }
 }
+
 
 // EnumSetType implies: Copy, PartialEq, Eq
 #[derive(EnumSetType, Debug, PartialOrd, Ord, Serialize, Deserialize)]
@@ -73,6 +79,92 @@ pub enum ElemSymbol {
     Array,
     Object,
     Json,
+}
+
+impl Arbitrary for ElemSymbol {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let choices: Vec<ElemSymbol> = EnumSet::all().iter().collect();
+        *g.choose(&choices).unwrap_or_else(|| &Self::Unit)
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        let self_copy = self.clone();
+        Box::new(EnumSet::all().iter().filter(move |&x| x < self_copy))
+    }
+}
+
+
+
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArbitraryNumber {
+    number: Number,
+}
+
+impl Arbitrary for ArbitraryNumber {
+    fn arbitrary(g: &mut Gen) -> Self {
+        if Arbitrary::arbitrary(g) {
+            if Arbitrary::arbitrary(g) {
+                let x: u64 = Arbitrary::arbitrary(g);
+                ArbitraryNumber { number:
+                    From::from(x)
+                }
+            } else {
+                let x: i64 = Arbitrary::arbitrary(g);
+                ArbitraryNumber { number:
+                    From::from(x)
+                }
+            }
+        } else {
+            let x: f64 = Arbitrary::arbitrary(g);
+            ArbitraryNumber { number:
+                Number::from_f64(x).unwrap_or(From::from(0u8))
+            }
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        match self.number.as_f64() {
+            None => match self.number.as_u64() {
+                None => match self.number.as_i64() {
+                    None => empty_shrinker(),
+                    Some(self_i64) => Box::new(
+                        self_i64.shrink()
+                        .map(|x| ArbitraryNumber {
+                            number: From::from(x),
+                        })),
+                },
+                Some(self_u64) => Box::new(
+                    self_u64.shrink()
+                    .map(|x| ArbitraryNumber {
+                        number: From::from(x),
+                    })),
+            },
+            Some(self_f64) => Box::new(
+                self_f64.shrink()
+                .map(|x| ArbitraryNumber {
+                    number: Number::from_f64(x).unwrap_or(From::from(0u8)),
+                })),
+        }
+    }
+}
+
+impl ElemSymbol {
+    pub fn arbitrary_contents(&self, g: &mut Gen) -> Elem {
+        match self {
+            Self::Unit => Elem::Unit,
+            Self::Bool => Elem::Bool(Arbitrary::arbitrary(g)),
+            Self::Number => {
+                let x: ArbitraryNumber = Arbitrary::arbitrary(g);
+                Elem::Number(x.number)
+            },
+            Self::Bytes => Elem::Bytes(Arbitrary::arbitrary(g)),
+            Self::String => Elem::String(Arbitrary::arbitrary(g)),
+            Self::Array => Elem::Array(Arbitrary::arbitrary(g)),
+            Self::Object => Elem::Object(Arbitrary::arbitrary(g)),
+            Self::Json => Elem::Json(Arbitrary::arbitrary(g)),
+        }
+    }
 }
 
 
