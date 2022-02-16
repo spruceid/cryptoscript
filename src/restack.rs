@@ -32,6 +32,11 @@ pub struct Restack {
 }
 
 impl Restack {
+    // (consumed_input_stack_size, produced_output_stack_size)
+    pub fn stack_io_counts(&self) -> (usize, usize) {
+        (self.restack_depth, self.restack_vec.len())
+    }
+
     // identity
     pub fn id() -> Self {
         Restack {

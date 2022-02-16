@@ -2,7 +2,6 @@ use crate::restack::{Restack, RestackError};
 use crate::types::{Elem, ElemError, Instruction, Instructions};
 use thiserror::Error;
 
-// TODO: implement n-step executor
 #[derive(Debug, Default)]
 pub struct Executor {
     stack: Vec<Elem>,
@@ -22,7 +21,6 @@ impl Executor {
 
                 Instruction::HashSha256 => self.pop_push(Elem::sha256)?,
                 Instruction::ToJson => self.pop_push(Elem::to_json)?,
-                Instruction::FromJson => self.pop_push(Elem::from_json)?,
                 Instruction::UnpackJson(elem_symbol) => self.pop_push(|x| x.unpack_json(elem_symbol))?,
                 Instruction::StringToBytes => self.pop_push(Elem::string_to_bytes)?,
 
@@ -50,18 +48,13 @@ impl Executor {
     }
 
     fn restack(&mut self, restack: Restack) -> Result<(), ExecError> {
-        match restack.run(&mut self.stack) {
-            Err(e) => Err(ExecError::RestackExecError(e)),
-            Ok(new_stack) => {
-                self.stack = new_stack;
-                Ok(()) },
-        }
+        self.stack = restack.run(&mut self.stack)?;
+        Ok(())
     }
 
     // TODO: since pop can fail, require passing debug info to it
     // (so we know what we were expecting)
     fn pop(&mut self) -> Result<Elem, ExecError> {
-        // self.stack.pop().ok_or_else(|| ExecError::EmptyStack)
         let result = self.stack.get(0).ok_or_else(|| ExecError::EmptyStack).map(|x|x.clone())?;
         self.stack = self.stack.drain(1..).collect();
         Ok(result.clone())
@@ -114,5 +107,11 @@ impl From<ElemError> for ExecError {
 impl From<serde_json::Error> for ExecError {
     fn from(error: serde_json::Error) -> Self {
         ExecError::ElemError(ElemError::ToFromJsonFailed(format!("{}", error)))
+    }
+}
+
+impl From<RestackError> for ExecError {
+    fn from (error: RestackError) -> Self {
+        ExecError::RestackExecError(error)
     }
 }

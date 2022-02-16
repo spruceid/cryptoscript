@@ -2,33 +2,38 @@ use crate::restack::Restack;
 
 use thiserror::Error;
 
+// use core::num;
 use std::cmp;
 use std::convert::TryFrom;
+// use std::iter::Chain;
+// use std::iter::Repeat;
+// use std::iter::Zip;
+use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
-// TODO: for demo:
-// - step through / display steps better
-// - support signatures:
-//   + check_sig
-//   + to_pub_key
+use enumset::{EnumSet, EnumSetType};
+
+// - readability:
+
+//     + stack size typing
+//     + stack typing
+//     + value annotations
+//     + JSON traversal path
+
+// TODO - primitives + numeric: to_int, add, sub, mul, div
+// TODO - primitives + bool: neg, and, or
+// TODO - primitives + signatures: to_pub_key, check_sig
+
+// - debugging
+
+// TODO: step through / display steps better
+
+// - testing
 
 // TODO: property based tests
 
-// TODO: Bool/Number primitives
-
-// Bool(bool),
-// - neg
-// - and
-// - or
-
-// Number(Number), -->> later
-// - to_int
-// - add
-// - sub
-// - mul
-// - div
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Elem {
@@ -57,7 +62,8 @@ impl PartialOrd for Elem {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+// EnumSetType implies: Copy, PartialEq, Eq
+#[derive(EnumSetType, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ElemSymbol {
     Unit,
     Bool,
@@ -68,6 +74,7 @@ pub enum ElemSymbol {
     Object,
     Json,
 }
+
 
 impl From<ElemSymbol> for &'static str {
     fn from(x: ElemSymbol) -> Self {
@@ -99,8 +106,8 @@ impl From<&Elem> for ElemSymbol {
     }
 }
 
-#[cfg(test)]
 impl ElemSymbol {
+    #[cfg(test)]
     pub fn default_elem(&self) -> Elem {
         match self {
             Self::Unit => Elem::Unit,
@@ -113,6 +120,12 @@ impl ElemSymbol {
             Self::Json => Elem::Json(Default::default()),
         }
     }
+
+    pub fn ty(&self) -> Ty {
+        Ty {
+            ty_set: EnumSet::only(self.clone()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -121,16 +134,7 @@ mod elem_symbol_tests {
 
     #[test]
     fn test_from_default_elem() {
-        for symbol in [
-            ElemSymbol::Unit,
-            ElemSymbol::Bool,
-            ElemSymbol::Number,
-            ElemSymbol::Bytes,
-            ElemSymbol::String,
-            ElemSymbol::Array,
-            ElemSymbol::Object,
-            ElemSymbol::Json,
-        ] {
+        for symbol in EnumSet::all().iter() {
             assert_eq!(symbol, From::from(symbol.default_elem()))
         }
     }
@@ -160,6 +164,10 @@ impl Elem {
     pub fn symbol_str(&self) -> &'static str {
       From::from(self.symbol())
     }
+
+    // pub fn push_ty_sets(&self) -> (Vec<Ty>, Vec<Ty>) {
+    //     (vec![], vec![self.symbol().ty()])
+    // }
 
     pub fn assert_true(&self) -> Result<(), ElemError> {
         match self {
@@ -299,8 +307,8 @@ impl Elem {
 
     pub fn index(self, maybe_iterable: Self) -> Result<Self, ElemError> {
         match (self, maybe_iterable) {
-            (Self::Number(index), Self::Bytes(iterator)) =>
-                Ok(Self::Bytes(vec![Self::index_generic(index, iterator, ElemSymbol::Bytes)?])),
+            // (Self::Number(index), Self::Bytes(iterator)) =>
+            //     Ok(Self::Bytes(vec![Self::index_generic(index, iterator, ElemSymbol::Bytes)?])),
             (Self::Number(index), Self::Array(iterator)) =>
                 Ok(Self::Json(Self::index_generic(index, iterator, ElemSymbol::Json)?)),
             (Self::Number(index), Self::Object(iterator)) =>
@@ -343,13 +351,6 @@ impl Elem {
 
     pub fn to_json(self) -> Result<Self, ElemError> {
         Ok(Self::Json(serde_json::to_value(self)?))
-    }
-
-    pub fn from_json(self) -> Result<Self, ElemError> {
-        match self {
-            Self::Json(raw_json) => Ok(serde_json::from_value(raw_json)?),
-            non_json => Err(ElemError::FromJsonUnsupportedType(non_json.symbol_str())),
-        }
     }
 
     pub fn unpack_json(self, elem_symbol: ElemSymbol) -> Result<Self, ElemError> {
@@ -524,12 +525,314 @@ pub enum Instruction {
     Lookup,
     AssertTrue,
     ToJson,
-    FromJson,
     UnpackJson(ElemSymbol),
     StringToBytes,
 }
 
-pub type Instructions = Vec<Instruction>;
+impl Instruction {
+    // forall (instr : Instructions) (input_stack: Executor),
+    //     if input_stack.len() < instr.stack_io_counts().0 {
+    //         stack_too_small error
+    //     } else {
+    //         output_stack.len() = input_stack.len() - instr.stack_io_counts().0 + instr.stack_io_counts().1
+    //     }
 
+    // (consumed_input_stack_size, produced_output_stack_size)
+    pub fn stack_io_counts(&self) -> (usize, usize) {
+        match self {
+            Instruction::Push(_) => (0, 1),
+            Instruction::Restack(restack) => restack.stack_io_counts(),
+            Instruction::HashSha256 => (1, 1),
+            Instruction::CheckLe => (2, 1),
+            Instruction::CheckLt => (2, 1),
+            Instruction::CheckEq => (2, 1),
+            Instruction::Concat => (2, 1),
+            Instruction::Slice => (3, 1),
+            Instruction::Index => (2, 1),
+            Instruction::Lookup => (2, 1),
+            Instruction::AssertTrue => (1, 0),
+            Instruction::ToJson => (1, 1),
+            Instruction::UnpackJson(_) => (1, 1),
+            Instruction::StringToBytes => (1, 1),
+        }
+    }
+
+    // pub fn ty_sets(&self) -> (Vec<Ty>, Vec<Ty>) {
+    //     match self {
+    //         Instruction::Push(elem) => elem.push_ty_sets(),
+    //         // Restack(restack) => restack.ty_sets(),
+    //         Instruction::HashSha256 => (vec![ElemSymbol::Bytes.ty()], vec![ElemSymbol::Bytes.ty()]),
+    //         // CheckLe,
+    //         // CheckLt,
+    //         Instruction::CheckEq => (vec![Ty::any(), Ty::any()], vec![ElemSymbol::Bool.ty()]),
+    //         // Concat,
+    //         // Slice,
+    //         // Index,
+    //         // Lookup,
+    //         // AssertTrue,
+    //         // ToJson,
+    //         // UnpackJson(ElemSymbol),
+    //         // StringToBytes,
+    //         _ => panic!("infer_instruction: unimplemented"),
+    //     }
+    // }
+}
+
+pub type Instructions = Vec<Instruction>;
 // pub type Stack = Vec<Elem>;
+
+// impl Instructions {
+//     pub fn stack_io_counts(&self, input_stack_size: usize) -> (usize, usize) {
+//         self.iter().fold((input_stack_size, input_stack_size), |memo, x| {
+//             let (memo_input, memo_output) = memo;
+//             let (next_input, next_output) = x.stack_io_counts;
+
+//             let mut this_input = memo_input;
+//             let mut this_output = memo_output;
+
+//             while this_input < next_input {
+//                 this_input += 1;
+//                 this_output += 1;
+//             }
+//             (this_input, this_output + next_output)
+//         })
+//     }
+// }
+
+// Typing Overview:
+// - calculate the number of in/out stack elements per instruction
+//     + most consume 0..2 and produce one input
+//     + exceptions are restack and assert_true
+// - trace the stack type variables through the execution
+//     + [ instruction ] -> [ (instruction, [stack_variable]) ], num_stack_variables
+//     + map from type_var -> [ (instruction_location, (instruction), stack_location) ]
+//         * instruction may/may-not be needed here
+//         * stack_location differentiates between e.g. index number and iterable
+//     + convert to a list of constraints
+//     + resolve the list of constraints to a single type
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SrcRange {
+    range: Range<usize>,
+}
+
+impl SrcRange {
+    pub fn singleton(src_location: usize) -> Self {
+        SrcRange {
+            range: (src_location..src_location + 1),
+        }
+    }
+
+    pub fn append(&self, other: Self) -> Result<Self, SrcRangeError> {
+        if self.range.end + 1 == other.range.start {
+            Ok(SrcRange { range: self.range.start..other.range.end })
+        } else {
+            Err(SrcRangeError::MismatchedRanges {
+                lhs: self.clone(),
+                rhs: other,
+            })
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Error)]
+pub enum SrcRangeError {
+    #[error("SrcRange::append applied to non-contiguous ranges: lhs: {lhs:?}; rhs: {rhs:?}")]
+    MismatchedRanges {
+        lhs: SrcRange,
+        rhs: SrcRange,
+    },
+}
+
+
+
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TyUnifyLocation {
+//     lhs: SrcRange,
+//     rhs: SrcRange,
+//     stack_position: usize,
+// }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Ty {
+    ty_set: EnumSet<ElemSymbol>,
+}
+
+// impl Ty {
+//     pub fn any() -> Self {
+//         Ty {
+//             ty_set: EnumSet::all(),
+//         }
+//     }
+
+//     pub fn unify(&self, other: Self, location: TyUnifyLocation) -> Result<Self, TypeError> {
+//         let both = self.ty_set.intersection(other.ty_set);
+//         if both.is_empty() {
+//             Err(TypeError::TyUnifyEmpty {
+//                 lhs: self.clone(),
+//                 rhs: other,
+//                 location: location,
+//             })
+//         } else {
+//             Ok(Ty {
+//                 ty_set: both
+//             })
+//         }
+//     }
+// }
+
+
+// typing:
+// - inference
+// - checking against inferred or other type (this + inference = bidirecitonal)
+// - unification
+// - two categories of tests:
+//   + property tests for typing methods themselves
+//   + test that a function having a particular type -> it runs w/o type errors on such inputs
+
+    // Push(Elem),             // (t: type, elem: type(t)) : [] -> [ t ]
+    // Restack(Restack),       // (r: restack) : [ .. ] -> [ .. ]
+    // HashSha256,             // : [ bytes ] -> [ bytes ]
+    // CheckLe,                // : [ x, x ] -> [ bool ]
+    // CheckLt,                // : [ x, x ] -> [ bool ]
+    // CheckEq,                // : [ x, x ] -> [ bool ]
+    // Concat,                 // (t: type, prf: is_concat(t)) : [ t, t ] -> [ t ]
+    // Slice,                  // (t: type, prf: is_slice(t)) : [ int, int, t ] -> [ t ]
+    // Index,                  // (t: type, prf: is_index(t)) : [ int, t ] -> [ json ]
+    // Lookup,                 // [ string, object ] -> [ json ]
+    // AssertTrue,             // [ bool ] -> []
+    // ToJson,                 // (t: type) : [ t ] -> [ json ]
+    // UnpackJson(ElemSymbol), // (t: type) : [ json ] -> [ t ]
+    // StringToBytes,          // [ string ] -> [ bytes ]
+
+
+
+
+// // TODO: use in_ty/out_ty
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct StackTy {
+//     src_range: SrcRange,
+//     in_ty: Vec<Ty>,
+//     out_ty: Vec<Ty>,
+// }
+
+// impl StackTy {
+//     // pub fn zip_extend_with<T>(xs: Vec<T>, ys: Vec<T>, fl: Fn(T) -> T, f: Fn(T, T)
+
+//     pub fn unify_ty_sets(xs: Vec<Ty>, ys: Vec<Ty>, xs_src_range: SrcRange, ys_src_range: SrcRange) -> Result<Vec<Ty>, TypeError> {
+//         let zip_len = cmp::max(xs.len(), ys.len());
+//         let xs_extended = xs.iter().map(|z|Some(z)).chain(std::iter::repeat(None).take(zip_len - xs.len()));
+//         let ys_extended = ys.iter().map(|z|Some(z)).chain(std::iter::repeat(None).take(zip_len - ys.len()));
+
+//         xs_extended.zip(ys_extended).enumerate().map(|ixy| {
+//             match ixy.1 {
+//                 (None, None) => Err(TypeError::StackTyUnifyNone {
+//                     lhs: xs.clone(),
+//                     rhs: ys.clone(),
+//                 }),
+//                 (Some(x), None) => Ok(*x),
+//                 (None, Some(y)) => Ok(*y),
+//                 (Some(x), Some(y)) => Ok(x.unify(*y, TyUnifyLocation {
+//                     lhs: xs_src_range.clone(),
+//                     rhs: ys_src_range.clone(),
+//                     stack_position: ixy.0,
+//                 })?),
+//             }
+
+//         }).collect()
+//     }
+
+//     pub fn diff_ty_sets(xs: Vec<Ty>, ys: Vec<Ty>) -> Result<Vec<Ty>, TypeError> {
+//         xs.iter().zip(ys.iter()).map(|x, y| {
+//             x.difference(y)
+//         }.collect()
+//     }
+
+//     pub fn union_ty_sets(xs: Vec<Ty>, ys: Vec<Ty>) -> Result<Vec<Ty>, TypeError> {
+//         // pad lengths and zip (pad with empty)
+//         xs.iter().zip(ys.iter()).map(|x, y| {
+//             x.union(y)
+//         }.collect()
+//     }
+
+//     pub fn unify(&self, other: Self) -> Result<Self, TypeError> {
+//         let middle_ty = Self::unify_ty_sets(self.out_ty, other.in_ty, self.src_range, other.src_range);
+//         let self_remainder = Self::diff_ty_sets(middle_ty, self.out_ty);
+//         let other_remainder = Self::diff_ty_sets(middle_ty, other.in_ty);
+//             in_ty: self.in_ty + self_remainder
+//             out_ty: other.out_ty + other_remainder
+
+//         StackTy {
+//             src_range: self.src_range.append(other.src_range)?,
+//             in_ty: Self::union_ty_sets(self.in_ty, self_remainder),
+//             out_ty: Self::union_ty_sets(other.out_ty, other_remainder),
+//         }
+//     }
+
+//     pub fn infer_instruction(instruction: &Instruction, src_location: usize) -> Self {
+//         let instruction_ty_sets = instruction.ty_sets();
+//         StackTy {
+//             src_range: SrcRange::singleton(src_location),
+//             in_ty: instruction_ty_sets.0,
+//             out_ty: instruction_ty_sets.1,
+//         }
+//     }
+
+//     // pub fn infer(instructions: Instructions) -> Result<Self, TypeError> {
+//     //     instructions.iter().enumerate()
+//     //         .map(|ix| Self::infer_instruction(ix.1, ix.0))
+//     //         .reduce(|memo, x| memo.unify(x))
+
+//     // }
+
+
+// }
+
+
+
+// #[derive(Debug, PartialEq, Error)]
+// pub enum TypeError {
+//     #[error("Ty::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
+//     TyUnifyEmpty {
+//         lhs: Ty,
+//         rhs: Ty,
+//         location: TyUnifyLocation,
+//     },
+
+//     // should be impossible
+//     #[error("StackTy::unify produced an attempt to unify None and None: lhs: {lhs:?}; rhs: {rhs:?}")]
+//     StackTyUnifyNone {
+//         lhs: Vec<Ty>,
+//         rhs: Vec<Ty>,
+//     },
+
+//     #[error("attempt to unify types of non-contiguous locations: lhs: {0:?}")]
+//     SrcRangeError(SrcRangeError),
+// }
+
+// impl From<SrcRangeError> for TypeError {
+//     fn from(error: SrcRangeError) -> Self {
+//         Self::SrcRangeError(error)
+//     }
+// }
+
+
+
+
+
 
