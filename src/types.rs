@@ -38,69 +38,13 @@ use quickcheck::{empty_shrinker, Arbitrary, Gen};
 // TODO: property based tests
 
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Elem {
-    Unit,
-    Bool(bool),
-    Number(Number),
-    Bytes(Vec<u8>),
-    String(String),
-    Array(Vec<Value>),
-    Object(Map<String, Value>),
-    Json(Value),
-}
-
-impl PartialOrd for Elem {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        match (self, other) {
-            (Self::Unit, Self::Unit) => Some(cmp::Ordering::Equal),
-            (Self::Bool(x), Self::Bool(y)) => x.partial_cmp(y),
-            (Self::Bytes(x), Self::Bytes(y)) => x.partial_cmp(y),
-            (Self::Number(x), Self::Number(y)) => format!("{}", x).partial_cmp(&format!("{}", y)),
-            // TODO: use x.to_string().partial_cmp(&y.to_string()),
-
-            (Self::String(x), Self::String(y)) => x.partial_cmp(y),
-            (Self::Array(x), Self::Array(y)) => if x == y { Some(cmp::Ordering::Equal) } else { None },
-            (Self::Object(x), Self::Object(y)) => if x == y { Some(cmp::Ordering::Equal) } else { None }
-            (_, _) => None,
-        }
-    }
-}
-
-
-// EnumSetType implies: Copy, PartialEq, Eq
-#[derive(EnumSetType, Debug, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum ElemSymbol {
-    Unit,
-    Bool,
-    Number,
-    Bytes,
-    String,
-    Array,
-    Object,
-    Json,
-}
-
-impl Arbitrary for ElemSymbol {
-    fn arbitrary(g: &mut Gen) -> Self {
-        let choices: Vec<ElemSymbol> = EnumSet::all().iter().collect();
-        *g.choose(&choices).unwrap_or_else(|| &Self::Unit)
-    }
-
-    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let self_copy = self.clone();
-        Box::new(EnumSet::all().iter().filter(move |&x| x < self_copy))
-    }
-}
-
-
-
-
+// TODO: migrate to own file
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArbitraryNumber {
     number: Number,
 }
 
+// TODO: migrate to own file
 impl Arbitrary for ArbitraryNumber {
     fn arbitrary(g: &mut Gen) -> Self {
         if Arbitrary::arbitrary(g) {
@@ -149,6 +93,115 @@ impl Arbitrary for ArbitraryNumber {
     }
 }
 
+
+// TODO: migrate to own file
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArbitraryMap {
+    map: Vec<(String, Value)>,
+}
+
+impl From<ArbitraryMap> for Map<String, Value> {
+    fn from(x: ArbitraryMap) -> Self {
+        x.map.into_iter().collect()
+    }
+}
+
+
+// TODO: migrate to own file
+impl Arbitrary for ArbitraryMap {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let map_vec: Vec<(String, ArbitraryValue)> = Arbitrary::arbitrary(g);
+        ArbitraryMap {
+            map: map_vec.into_iter().map(|x| (x.0, x.1.value)).collect(),
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        empty_shrinker()
+    }
+}
+
+// TODO: migrate to own file
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArbitraryValue {
+    value: Value,
+}
+
+// TODO: migrate to own file
+impl Arbitrary for ArbitraryValue {
+    fn arbitrary(g: &mut Gen) -> Self {
+        ArbitraryValue {
+            value: Value::Null,
+        }
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        empty_shrinker()
+    }
+}
+
+
+
+
+
+
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Elem {
+    Unit,
+    Bool(bool),
+    Number(Number),
+    Bytes(Vec<u8>),
+    String(String),
+    Array(Vec<Value>),
+    Object(Map<String, Value>),
+    Json(Value),
+}
+
+impl PartialOrd for Elem {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        match (self, other) {
+            (Self::Unit, Self::Unit) => Some(cmp::Ordering::Equal),
+            (Self::Bool(x), Self::Bool(y)) => x.partial_cmp(y),
+            (Self::Bytes(x), Self::Bytes(y)) => x.partial_cmp(y),
+            (Self::Number(x), Self::Number(y)) => x.to_string().partial_cmp(&y.to_string()),
+            (Self::String(x), Self::String(y)) => x.partial_cmp(y),
+            (Self::Array(x), Self::Array(y)) => if x == y { Some(cmp::Ordering::Equal) } else { None },
+            (Self::Object(x), Self::Object(y)) => if x == y { Some(cmp::Ordering::Equal) } else { None }
+            (_, _) => None,
+        }
+    }
+}
+
+
+// EnumSetType implies: Copy, PartialEq, Eq
+#[derive(EnumSetType, Debug, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ElemSymbol {
+    Unit,
+    Bool,
+    Number,
+    Bytes,
+    String,
+    Array,
+    Object,
+    Json,
+}
+
+impl Arbitrary for ElemSymbol {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let choices: Vec<ElemSymbol> = EnumSet::all().iter().collect();
+        *g.choose(&choices).unwrap_or_else(|| &Self::Unit)
+    }
+
+    fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+        let self_copy = self.clone();
+        Box::new(EnumSet::all().iter().filter(move |&x| x < self_copy))
+    }
+}
+
+
+
+
 impl ElemSymbol {
     pub fn arbitrary_contents(&self, g: &mut Gen) -> Elem {
         match self {
@@ -160,9 +213,18 @@ impl ElemSymbol {
             },
             Self::Bytes => Elem::Bytes(Arbitrary::arbitrary(g)),
             Self::String => Elem::String(Arbitrary::arbitrary(g)),
-            Self::Array => Elem::Array(Arbitrary::arbitrary(g)),
-            Self::Object => Elem::Object(Arbitrary::arbitrary(g)),
-            Self::Json => Elem::Json(Arbitrary::arbitrary(g)),
+            Self::Array => {
+                let xs: Vec<ArbitraryValue> = Arbitrary::arbitrary(g);
+                Elem::Array(xs.into_iter().map(|x| x.value).collect())
+            },
+            Self::Object => {
+                let xs: ArbitraryMap = Arbitrary::arbitrary(g);
+                Elem::Object(From::from(xs))
+            },
+            Self::Json => {
+                let xs: ArbitraryValue = Arbitrary::arbitrary(g);
+                Elem::Json(xs.value)
+            },
         }
     }
 }
