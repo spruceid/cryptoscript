@@ -1,7 +1,11 @@
 mod restack;
 pub use restack::Restack;
+mod arbitrary;
+pub use arbitrary::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
+mod elem;
+pub use elem::{Elem, ElemSymbol};
 mod types;
-pub use types::{Elem, ElemSymbol, Instruction, Instructions};
+pub use types::{Instruction, Instructions};
 mod parse;
 pub use parse::{parse, parse_json};
 mod executor;

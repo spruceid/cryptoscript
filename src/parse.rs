@@ -9,7 +9,8 @@
 /// Where CHARS is any number of characters which aren't escaped double-quotes (\") and HEX is a 64
 /// digit hexadecimal number.
 
-use crate::types::{Elem, Instruction, Instructions};
+use crate::elem::{Elem};
+use crate::types::{Instruction, Instructions};
 
 use std::str::FromStr;
 
