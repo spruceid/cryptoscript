@@ -118,14 +118,14 @@ impl Restack {
         }
     }
 
-    // self.valid_depth() ->
+    // self.is_valid_depth() ->
     // self.restack_depth <= xs.len() ->
     // self.run(xs).is_ok() == true
-    pub fn valid_depth(&self) -> bool {
+    pub fn is_valid_depth(&self) -> bool {
         !self.restack_vec.iter().any(|&restack_index| self.restack_depth <= restack_index)
     }
 
-    // NOTE: unchecked (run valid_depth on arguments for safe version)
+    // NOTE: unchecked (run is_valid_depth on arguments for safe version)
     // x.append(y).run(s) == x.run(y.run(s))
     pub fn append(&self, other: Self) -> Self {
         Restack {
@@ -163,13 +163,13 @@ mod tests {
     fn test_restack_id() {
         let mut example_stack = vec![false, true];
         let restack = Restack::id();
-        assert!(restack.valid_depth(), "Restack::id() has invalid depth");
+        assert!(restack.is_valid_depth(), "Restack::id() has invalid depth");
         assert_eq!(Ok(example_stack.clone()), restack.run(&mut example_stack))
     }
 
     #[test]
     fn test_restack_dig() {
-        assert!(Restack::dig(4).valid_depth(), "Restack::dig(4) has invalid depth");
+        assert!(Restack::dig(4).is_valid_depth(), "Restack::dig(4) has invalid depth");
         assert_eq!(Restack { restack_depth: 5, restack_vec: vec![4, 0, 1, 2, 3] }, Restack::dig(4));
         let mut example_stack_in = vec![false, false, false, false, true];
         let example_stack_out = vec![true, false, false, false, false];
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_restack_dug() {
-        assert!(Restack::dug(4).valid_depth(), "Restack::dug(4) has invalid depth");
+        assert!(Restack::dug(4).is_valid_depth(), "Restack::dug(4) has invalid depth");
         assert_eq!(Restack { restack_depth: 5, restack_vec: vec![1, 2, 3, 4, 0] }, Restack::dug(4));
         let mut example_stack_in = vec![true, false, false, false, false];
         let example_stack_out = vec![false, false, false, false, true];
@@ -194,7 +194,7 @@ mod tests {
             vec![false],
             vec![]] {
                 let restack = Restack::drop_n(3 - example_stack_out.len());
-                assert!(restack.valid_depth(), "Restack::drop_n(_) has invalid depth");
+                assert!(restack.is_valid_depth(), "Restack::drop_n(_) has invalid depth");
                 assert_eq!(Ok(example_stack_out), restack.run(&mut example_stack_in.clone()));
         }
     }
@@ -204,7 +204,7 @@ mod tests {
         let mut example_stack_in = vec![false, true];
         let example_stack_out = vec![true];
         let restack = Restack::drop();
-        assert!(restack.valid_depth(), "Restack::drop() has invalid depth");
+        assert!(restack.is_valid_depth(), "Restack::drop() has invalid depth");
         assert_eq!(Ok(example_stack_out), restack.run(&mut example_stack_in))
     }
 
@@ -213,7 +213,7 @@ mod tests {
         let mut example_stack_in = vec![false, true];
         let example_stack_out = vec![true, false];
         let restack = Restack::swap();
-        assert!(restack.valid_depth(), "Restack::swap() has invalid depth");
+        assert!(restack.is_valid_depth(), "Restack::swap() has invalid depth");
         assert_eq!(Ok(example_stack_out), restack.run(&mut example_stack_in))
     }
 
@@ -221,7 +221,7 @@ mod tests {
     fn test_restack_swap_twice_append() {
         let mut example_stack = vec![false, true];
         let restack = Restack::swap().append(Restack::swap());
-        assert!(restack.valid_depth(), "Restack::swap().append(Restack::swap()) has invalid depth");
+        assert!(restack.is_valid_depth(), "Restack::swap().append(Restack::swap()) has invalid depth");
         assert_eq!(Ok(example_stack.clone()), restack.run(&mut example_stack))
     }
 }

@@ -1,9 +1,7 @@
 use crate::restack::Restack;
 use crate::elem::{Elem, ElemSymbol};
 
-use std::ops::Range;
-
-use enumset::{EnumSet, EnumSetType};
+use enumset::{EnumSet};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -32,21 +30,6 @@ use thiserror::Error;
 // - two categories of tests:
 //   + property tests for typing methods themselves
 //   + test that a function having a particular type -> it runs w/o type errors on such inputs
-
-// Push(Elem),             // (t: type, elem: type(t)) : [] -> [ t ]
-// Restack(Restack),       // (r: restack) : [ .. ] -> [ .. ]
-// HashSha256,             // : [ bytes ] -> [ bytes ]
-// CheckLe,                // : [ x, x ] -> [ bool ]
-// CheckLt,                // : [ x, x ] -> [ bool ]
-// CheckEq,                // : [ x, x ] -> [ bool ]
-// Concat,                 // (t: type, prf: is_concat(t)) : [ t, t ] -> [ t ]
-// Slice,                  // (t: type, prf: is_slice(t)) : [ int, int, t ] -> [ t ]
-// Index,                  // (t: type, prf: is_index(t)) : [ int, t ] -> [ json ]
-// Lookup,                 // [ string, object ] -> [ json ]
-// AssertTrue,             // [ bool ] -> []
-// ToJson,                 // (t: type) : [ t ] -> [ json ]
-// UnpackJson(ElemSymbol), // (t: type) : [ json ] -> [ t ]
-// StringToBytes,          // [ string ] -> [ bytes ]
 
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
@@ -115,46 +98,267 @@ pub type Instructions = Vec<Instruction>;
 
 
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SrcRange {
-    range: Range<usize>,
-}
-
-impl SrcRange {
-    pub fn singleton(src_location: usize) -> Self {
-        SrcRange {
-            range: (src_location..src_location + 1),
-        }
-    }
-
-    pub fn append(&self, other: Self) -> Result<Self, SrcRangeError> {
-        if self.range.end + 1 == other.range.start {
-            Ok(SrcRange { range: self.range.start..other.range.end })
-        } else {
-            Err(SrcRangeError::MismatchedRanges {
-                lhs: self.clone(),
-                rhs: other,
-            })
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Error)]
-pub enum SrcRangeError {
-    #[error("SrcRange::append applied to non-contiguous ranges: lhs: {lhs:?}; rhs: {rhs:?}")]
-    MismatchedRanges {
-        lhs: SrcRange,
-        rhs: SrcRange,
-    },
-}
-
 
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Ty {
-    ty_set: EnumSet<ElemSymbol>,
+pub struct ElemType {
+    type_set: EnumSet<ElemSymbol>,
 }
+
+impl ElemSymbol {
+    pub fn elem_type(&self) -> ElemType {
+        ElemType {
+            type_set: EnumSet::only(*self),
+        }
+    }
+}
+
+impl Elem {
+    pub fn elem_type(&self) -> ElemType {
+        self.symbol().elem_type()
+    }
+}
+
+impl ElemType {
+    pub fn any() -> Self {
+        ElemType {
+            type_set: EnumSet::all(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Context {
+    context: Vec<ElemType>
+}
+
+impl Context {
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct TypeId {
+    type_id: usize,
+}
+
+impl Context {
+    pub fn new() -> Self {
+        Context {
+            context: vec![],
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        self.context.len()
+    }
+
+    pub fn push(&mut self, elem_type: ElemType) -> TypeId {
+        let push_id = TypeId {
+            type_id: self.size(),
+        };
+        self.context.push(elem_type);
+        push_id
+    }
+}
+
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Type {
+    context: Context,
+    i_type: Vec<TypeId>,
+    o_type: Vec<TypeId>,
+}
+
+impl Type {
+    pub fn is_valid(&self) -> bool {
+        let context_size = self.context.size();
+        !(self.i_type.iter().any(|x| x.type_id >= context_size) ||
+          self.o_type.iter().any(|x| x.type_id >= context_size))
+    }
+}
+
+// TODO: implement
+impl Restack {
+    pub fn type_of(&self) -> Type {
+        panic!("Restack.type_of unimplemented");
+
+        let mut context = Context::new();
+        // let bool_var = context.push(ElemSymbol::Bool.elem_type());
+        Type {
+            context: context,
+            i_type: vec![],
+            o_type: vec![],
+        }
+    }
+}
+
+impl Instruction {
+    pub fn type_of(&self) -> Type {
+        match self {
+            Instruction::Restack(restack) => restack.type_of(),
+
+            Instruction::AssertTrue => {
+                let mut context = Context::new();
+                let bool_var = context.push(ElemSymbol::Bool.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![bool_var],
+                    o_type: vec![],
+                }
+            },
+
+            Instruction::Push(elem) => {
+                let mut context = Context::new();
+                let elem_var = context.push(elem.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![],
+                    o_type: vec![elem_var],
+                }
+            },
+
+            Instruction::HashSha256 => {
+                let mut context = Context::new();
+                let bytes_var = context.push(ElemSymbol::Bytes.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![bytes_var],
+                    o_type: vec![bytes_var],
+                }
+            },
+
+            Instruction::ToJson => {
+                let mut context = Context::new();
+                let any_var = context.push(ElemType::any());
+                let json_var = context.push(ElemSymbol::Json.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![any_var],
+                    o_type: vec![json_var],
+                }
+            },
+
+            Instruction::StringToBytes => {
+                let mut context = Context::new();
+                let string_var = context.push(ElemSymbol::String.elem_type());
+                let bytes_var = context.push(ElemSymbol::Bytes.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![string_var],
+                    o_type: vec![bytes_var],
+                }
+            },
+
+            Instruction::UnpackJson(elem_symbol) => {
+                let mut context = Context::new();
+                let json_var = context.push(ElemSymbol::Json.elem_type());
+                let elem_symbol_var = context.push(elem_symbol.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![json_var],
+                    o_type: vec![elem_symbol_var],
+                }
+            },
+
+            Instruction::CheckLe => {
+                let mut context = Context::new();
+                let any_lhs_var = context.push(ElemType::any());
+                let any_rhs_var = context.push(ElemType::any());
+                let bool_var = context.push(ElemSymbol::Bool.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![any_lhs_var, any_rhs_var],
+                    o_type: vec![bool_var],
+                }
+            },
+
+            Instruction::CheckLt => {
+                let mut context = Context::new();
+                let any_lhs_var = context.push(ElemType::any());
+                let any_rhs_var = context.push(ElemType::any());
+                let bool_var = context.push(ElemSymbol::Bool.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![any_lhs_var, any_rhs_var],
+                    o_type: vec![bool_var],
+                }
+            },
+
+            Instruction::CheckEq => {
+                let mut context = Context::new();
+                let any_lhs_var = context.push(ElemType::any());
+                let any_rhs_var = context.push(ElemType::any());
+                let bool_var = context.push(ElemSymbol::Bool.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![any_lhs_var, any_rhs_var],
+                    o_type: vec![bool_var],
+                }
+            },
+
+            Instruction::Concat => {
+                let mut context = Context::new();
+                let concat_var = context.push(ElemType::concat_type());
+                Type {
+                    context: context,
+                    i_type: vec![concat_var, concat_var],
+                    o_type: vec![concat_var],
+                }
+            },
+
+            Instruction::Index => {
+                let mut context = Context::new();
+                let number_var = context.push(ElemSymbol::Number.elem_type());
+                let index_var = context.push(ElemType::index_type());
+                Type {
+                    context: context,
+                    i_type: vec![number_var, index_var],
+                    o_type: vec![index_var],
+                }
+            },
+
+            Instruction::Lookup => {
+                let mut context = Context::new();
+                let string_var = context.push(ElemSymbol::String.elem_type());
+                let object_var = context.push(ElemSymbol::Object.elem_type());
+                Type {
+                    context: context,
+                    i_type: vec![string_var, object_var],
+                    o_type: vec![object_var],
+                }
+            },
+
+            Instruction::Slice => {
+                let mut context = Context::new();
+                let offset_number_var = context.push(ElemSymbol::Number.elem_type());
+                let length_number_var = context.push(ElemSymbol::Number.elem_type());
+                let slice_var = context.push(ElemType::slice_type());
+                Type {
+                    context: context,
+                    i_type: vec![offset_number_var, length_number_var, slice_var],
+                    o_type: vec![slice_var],
+                }
+            },
+        }
+    }
+}
+
+// Push(Elem),             // (t: type, elem: type(t)) : [] -> [ t ]
+// Restack(Restack),       // (r: restack) : [ .. ] -> [ .. ]
+// HashSha256,             // : [ bytes ] -> [ bytes ]
+// CheckLe,                // : [ x, x ] -> [ bool ]
+// CheckLt,                // : [ x, x ] -> [ bool ]
+// CheckEq,                // : [ x, x ] -> [ bool ]
+// Concat,                 // (t: type, prf: is_concat(t)) : [ t, t ] -> [ t ]
+// Slice,                  // (t: type, prf: is_slice(t)) : [ int, int, t ] -> [ t ]
+// Index,                  // (t: type, prf: is_index(t)) : [ int, t ] -> [ json ]
+// Lookup,                 // [ string, object ] -> [ json ]
+// AssertTrue,             // [ bool ] -> []
+// ToJson,                 // (t: type) : [ t ] -> [ json ]
+// UnpackJson(ElemSymbol), // (t: type) : [ json ] -> [ t ]
+// StringToBytes,          // [ string ] -> [ bytes ]
+
+
 
 // #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // pub struct TyUnifyLocation {
@@ -164,11 +368,6 @@ pub struct Ty {
 // }
 
 // impl Ty {
-//     pub fn any() -> Self {
-//         Ty {
-//             ty_set: EnumSet::all(),
-//         }
-//     }
 
 //     pub fn unify(&self, other: Self, location: TyUnifyLocation) -> Result<Self, TypeError> {
 //         let both = self.ty_set.intersection(other.ty_set);
@@ -194,8 +393,8 @@ pub struct Ty {
 // #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // pub struct StackTy {
 //     src_range: SrcRange,
-//     in_ty: Vec<Ty>,
-//     out_ty: Vec<Ty>,
+//     in_type: Vec<Ty>,
+//     out_type: Vec<Ty>,
 // }
 
 // impl StackTy {
@@ -238,16 +437,16 @@ pub struct Ty {
 //     }
 
 //     pub fn unify(&self, other: Self) -> Result<Self, TypeError> {
-//         let middle_ty = Self::unify_ty_sets(self.out_ty, other.in_ty, self.src_range, other.src_range);
-//         let self_remainder = Self::diff_ty_sets(middle_ty, self.out_ty);
-//         let other_remainder = Self::diff_ty_sets(middle_ty, other.in_ty);
-//             in_ty: self.in_ty + self_remainder
-//             out_ty: other.out_ty + other_remainder
+//         let middle_ty = Self::unify_ty_sets(self.out_type, other.in_type, self.src_range, other.src_range);
+//         let self_remainder = Self::diff_ty_sets(middle_ty, self.out_type);
+//         let other_remainder = Self::diff_ty_sets(middle_ty, other.in_type);
+//             in_type: self.in_type + self_remainder
+//             out_type: other.out_type + other_remainder
 
 //         StackTy {
 //             src_range: self.src_range.append(other.src_range)?,
-//             in_ty: Self::union_ty_sets(self.in_ty, self_remainder),
-//             out_ty: Self::union_ty_sets(other.out_ty, other_remainder),
+//             in_type Self::union_ty_sets(self.in_type, self_remainder),
+//             out_type Self::union_ty_sets(other.out_type, other_remainder),
 //         }
 //     }
 
@@ -255,8 +454,8 @@ pub struct Ty {
 //         let instruction_ty_sets = instruction.ty_sets();
 //         StackTy {
 //             src_range: SrcRange::singleton(src_location),
-//             in_ty: instruction_ty_sets.0,
-//             out_ty: instruction_ty_sets.1,
+//             in_type instruction_ty_sets.0,
+//             out_type instruction_ty_sets.1,
 //         }
 //     }
 
