@@ -27,8 +27,8 @@ pub type StackIx = usize;
 //     + global: keep track of stack indices (always possible?) and print where it's from???
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct Restack {
-    restack_depth: StackIx,
-    restack_vec: Vec<StackIx>,
+    pub restack_depth: StackIx,
+    pub restack_vec: Vec<StackIx>,
 }
 
 impl Restack {

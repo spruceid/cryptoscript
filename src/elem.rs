@@ -142,7 +142,7 @@ impl ElemSymbol {
         match self {
             Self::Unit => Elem::Unit,
             Self::Bool => Elem::Bool(Default::default()),
-            Self::Number => Elem::Number(Default::default()),
+            Self::Number => Elem::Number(From::<u8>::from(Default::default())),
             Self::Bytes => Elem::Bytes(Default::default()),
             Self::String => Elem::String(Default::default()),
             Self::Array => Elem::Array(Default::default()),
@@ -150,12 +150,6 @@ impl ElemSymbol {
             Self::Json => Elem::Json(Default::default()),
         }
     }
-
-    // pub fn ty(&self) -> Ty {
-    //     Ty {
-    //         ty_set: EnumSet::only(self.clone()),
-    //     }
-    // }
 }
 
 #[cfg(test)]
@@ -164,8 +158,8 @@ mod elem_symbol_tests {
 
     #[test]
     fn test_from_default_elem() {
-        for symbol in EnumSet::all().iter() {
-            assert_eq!(symbol, From::from(symbol.default_elem()))
+        for symbol in EnumSet::<ElemSymbol>::all().iter() {
+            assert_eq!(symbol, symbol.default_elem().symbol())
         }
     }
 
@@ -174,14 +168,14 @@ mod elem_symbol_tests {
         for default_elem in [
           Elem::Unit,
           Elem::Bool(Default::default()),
-          Elem::Number(Default::default()),
+          Elem::Number(From::<u8>::from(Default::default())),
           Elem::Bytes(Default::default()),
           Elem::String(Default::default()),
           Elem::Array(Default::default()),
           Elem::Object(Default::default()),
           Elem::Json(Default::default()),
         ] {
-            assert_eq!(default_elem, From::from(default_elem).default_elem())
+            assert_eq!(default_elem, default_elem.symbol().default_elem())
         }
     }
 }
