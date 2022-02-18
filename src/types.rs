@@ -2,75 +2,31 @@ use crate::restack::{Restack, RestackError};
 use crate::elem::{Elem, ElemSymbol};
 
 use std::collections::BTreeMap;
+use std::cmp;
+use std::iter::Skip;
 
 use enumset::{EnumSet, enum_set};
 use serde::{Deserialize, Serialize};
-// use thiserror::Error;
+use thiserror::Error;
 
 
 // TODO: relocate
-pub fn zip_then<A, B, FAB, FA, FB, R>(a: A, b: B, mut fab: FAB, mut fa: FA, mut fb: FB) -> Result<(), R>
+pub fn after_zip<A, B>(a: A, b: B) -> Result<Skip<<A as std::iter::IntoIterator>::IntoIter>, Skip<<B as std::iter::IntoIterator>::IntoIter>>
 where
     A: IntoIterator,
     B: IntoIterator,
-    FAB: FnMut(<A as std::iter::IntoIterator>::Item, <B as std::iter::IntoIterator>::Item) -> Result<(), R>,
-    FA: FnMut(<A as std::iter::IntoIterator>::Item) -> Result<(), R>,
-    FB: FnMut(<B as std::iter::IntoIterator>::Item) -> Result<(), R>,
+    <A as std::iter::IntoIterator>::IntoIter: ExactSizeIterator,
+    <B as std::iter::IntoIterator>::IntoIter: ExactSizeIterator,
 {
-    let mut b_iter = b.into_iter();
-    for x in a.into_iter() {
-        match b_iter.next() {
-            Some(y) => fab(x, y)?,
-            None => fa(x)?,
-        }
-    }
-    for y in b_iter {
-        fb(y)?
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_zip_then_longer_rhs() {
-        let xs = vec![false, false, false, false, true];
-        let ys = vec![true, true, true, true, false, true, true, false];
-        let mut xs_out = vec![];
-        let mut ys_out = vec![];
-        let mut xs_out_remainder = vec![];
-        let mut ys_out_remainder = vec![];
-        assert_eq!(Ok::<(), ()>(()),
-            zip_then(&xs,
-                     &ys,
-                     |x, y| {
-                         xs_out.push(x);
-                         ys_out.push(y);
-                         Ok(())
-                     },
-                     |x| {
-                         xs_out_remainder.push(x);
-                         Ok(())
-                        },
-                     |y| {
-                         ys_out_remainder.push(y);
-                         Ok(())
-                    }));
-        xs_out.append(&mut xs_out_remainder);
-        ys_out.append(&mut ys_out_remainder);
-        assert_eq!(xs.iter().map(|x| *x).collect::<Vec<bool>>(), xs_out.iter().map(|&x| *x).collect::<Vec<bool>>());
-        assert_eq!(ys.iter().map(|x| *x).collect::<Vec<bool>>(), ys_out.iter().map(|&x| *x).collect::<Vec<bool>>());
+    let a_iter = a.into_iter();
+    let b_iter = b.into_iter();
+    let max_len = cmp::max(a_iter.len(), b_iter.len());
+    if max_len == a_iter.len() {
+        Ok(a_iter.skip(b_iter.len()))
+    } else {
+        Err(b_iter.skip(a_iter.len()))
     }
 }
-
-
-
-// NEXT:
-// - define a context of type variables (Vec<EnumSet<ElemSymbol>> === Map<uname: VarId, EnumSet<ElemSymbol>>)
-// - define input/output stacks of type variables (Vec<uname: VarId>)
-// - define unification/inference/typing rules/patterns
 
 // Typing Overview:
 // - calculate the number of in/out stack elements per instruction
@@ -167,6 +123,20 @@ impl ElemType {
     pub fn slice_type() -> Self {
         Self::concat_type()
     }
+
+    pub fn unify(&self, other: Self) -> Result<Self, TypeError> {
+        let both = self.type_set.intersection(other.type_set);
+        if both.is_empty() {
+            Err(TypeError::ElemTypeUnifyEmpty {
+                lhs: self.clone(),
+                rhs: other.clone(),
+            })
+        } else {
+            Ok(ElemType {
+                type_set: both,
+            })
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -190,6 +160,17 @@ impl Context {
         }
     }
 
+    pub fn new_max(&self, other: Self) -> Self {
+        Context {
+            context: BTreeMap::new(),
+            next_type_id: TypeId {
+                type_id:
+                    cmp::max(self.next_type_id.type_id,
+                             other.next_type_id.type_id),
+            },
+        }
+    }
+
     pub fn is_valid(&self) -> bool {
         !self.context.keys().any(|x| *x >= self.next_type_id)
     }
@@ -207,9 +188,23 @@ impl Context {
         push_id
     }
 
+    pub fn get(&mut self, index: &TypeId) -> Result<ElemType, TypeError> {
+        Ok(self.context.get(index).ok_or_else(|| TypeError::ContextGetUnknownTypeId {
+            context: self.clone(),
+            index: *index,
+        })?.clone())
+    }
+
     // pub fn push_unified(&mut self, xs: Self, ys: Self, xi: TypeId, yi: TypeId) -> Self {
     //     _
     // }
+
+    // TODO: remove mut xs/ys
+    pub fn unify(&mut self, mut xs: Self, mut ys: Self, xi: &TypeId, yi: &TypeId) -> Result<TypeId, TypeError> {
+        let x_type = xs.get(xi)?;
+        let y_type = ys.get(yi)?;
+        Ok(self.push(x_type.unify(y_type)?))
+    }
 }
 
 
@@ -231,44 +226,89 @@ impl Type {
     }
 
     // TODO:
-    //     - use remapping of variables (always larger than max of both)
     //     - make method to simplify context
     //     - pretty-print Type
 
     // TODO: this is next, figure out how to represent/implement replacements of
     //     variables, e.g. starting larger than both or collecting maps (old_lhs -> new_lhs)
 
-    // pub fn compose(&self, other: Self) -> Result<Self, TypeError> {
-    //     let mut context = Context::new();
+    // f : self
+    // g : other
+    // self.compose(other) : (f ++ g).type_of()
+    //
+    // input ->
+    // other.i_type
+    // other.o_type
+    // self.i_type
+    // self.o_type
+    // -> output
+    //
+    // 1. iterate through (zip(self.o_type, other.i_type)) and unify the pairs into a new context
+    // 2. collect the remainder and add them to the context
+    // 3. add the remainder to (self.i_type, other.o_type), with replaced variables
+    pub fn compose(&self, other: Self) -> Result<Self, TypeError> {
+        let self_context = &self.context;
+        let other_context = &other.context;
 
-    //     let unified_overlap = self.o_type.iter().zip(other.i_type.iter()).map(|x, y| {
-    //         (x, y, context.push_unified(self, other, x, y));
-    //     });
+        let mut context = self_context.clone().new_max(other_context.clone());
+        let mut self_type_map: BTreeMap<TypeId, TypeId> = BTreeMap::new();
+        let mut other_type_map: BTreeMap<TypeId, TypeId> = BTreeMap::new();
 
-    //     let remainder_overlap_iter = if self.o_type.len() <= other.i_type.len()) {
-    //         other.i_type.iter().skip(self.o_type.len())
-    //     } else {
-    //         self.o_type.iter().skip(other.i_type.len())
-    //     };
+        let mut i_type = vec![];
+        let mut o_type = vec![];
 
-    //     let remainder_overlap = remainder_overlap_iter.map(|x| {
-    //         (x, context.push(x));
-    //     });
+        other.o_type.iter().zip(self.i_type.clone()).try_for_each(|(o_type, i_type)| {
+            let new_type_id = context
+                .unify(self_context.clone(),
+                       other_context.clone(),
+                       &i_type,
+                       &o_type)?;
+            self_type_map.insert(i_type, new_type_id);
+            other_type_map.insert(*o_type, new_type_id);
+            Ok(())
+        })?;
 
-    //     1. iterate through (zip(self.o_type, other.i_type)) and unify the pairs into a new context
-    //     2. collect the remainder and add them to the context
-    //     3. add the remainder to (self.i_type, other.o_type), with replaced variables
+        match after_zip(other.o_type.clone(), self.i_type.clone()) {
+            Ok(other_o_type_remainder) =>
+                for o_type in other_o_type_remainder {
+                    let new_o_type = context.push(other.context.clone().get(&o_type)?);
+                    other_type_map.insert(o_type.clone(), new_o_type);
+                    i_type.push(new_o_type.clone());
+                },
+            Err(self_i_type_remainder) =>
+                for i_type in self_i_type_remainder {
+                    let new_i_type = context.push(self.context.clone().get(&i_type)?);
+                    self_type_map.insert(i_type.clone(), new_i_type);
+                    o_type.push(new_i_type.clone());
+                },
+        }
 
-    //     _
-
-    // }
-
+        Ok(Type {
+            context: context,
+            i_type: other.i_type.clone().iter()
+                .map(move |x| Ok(other_type_map
+                     .get(x)
+                     .ok_or_else(|| TypeError::ContextGetUnknownTypeId { // TODO: new error
+                         context: other.context.clone(),
+                         index: *x,
+                    })?.clone())).chain(i_type.iter().map(move |x| Ok(*x))).collect::<Result<Vec<TypeId>, TypeError>>()?,
+            o_type: self.o_type.clone().iter()
+                .map(|x| Ok(self_type_map
+                     .get(x)
+                     .ok_or_else(|| TypeError::ContextGetUnknownTypeId {
+                         context: self.context.clone(),
+                         index: *x,
+                    })?.clone())).chain(o_type.iter().map(move |x| Ok(*x))).collect::<Result<Vec<TypeId>, TypeError>>()?,
+        })
+    }
 }
 
 impl Restack {
     pub fn type_of(&self) -> Result<Type, RestackError> {
         let mut context = Context::new();
-        let mut restack_type: Vec<TypeId> = (0..self.restack_depth).map(|x| TypeId { type_id: x }).collect();
+        let mut restack_type: Vec<TypeId> = (0..self.restack_depth)
+            .map(|_x| context.push(ElemType::any()))
+            .collect();
         Ok(Type {
             context: context,
             i_type: restack_type.clone(),
@@ -442,137 +482,38 @@ impl Instruction {
     }
 }
 
+#[derive(Debug, PartialEq, Error)]
+pub enum TypeError {
+    #[error("Context::get applied to a TypeId: {index:?}, not in the Context: {context:?}")]
+    ContextGetUnknownTypeId {
+        context: Context,
+        index: TypeId,
+    },
 
+    #[error("ElemType::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
+    ElemTypeUnifyEmpty {
+        lhs: ElemType,
+        rhs: ElemType,
+        // location: TyUnifyLocation,
+    },
 
+    // // should be impossible
+    // #[error("StackTy::unify produced an attempt to unify None and None: lhs: {lhs:?}; rhs: {rhs:?}")]
+    // StackTyUnifyNone {
+    //     lhs: Vec<Ty>,
+    //     rhs: Vec<Ty>,
+    // },
 
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TyUnifyLocation {
-//     lhs: SrcRange,
-//     rhs: SrcRange,
-//     stack_position: usize,
-// }
-
-// impl Ty {
-
-//     pub fn unify(&self, other: Self, location: TyUnifyLocation) -> Result<Self, TypeError> {
-//         let both = self.ty_set.intersection(other.ty_set);
-//         if both.is_empty() {
-//             Err(TypeError::TyUnifyEmpty {
-//                 lhs: self.clone(),
-//                 rhs: other,
-//                 location: location,
-//             })
-//         } else {
-//             Ok(Ty {
-//                 ty_set: both
-//             })
-//         }
-//     }
-// }
-
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct StackTy {
-//     src_range: SrcRange,
-//     in_type: Vec<Ty>,
-//     out_type: Vec<Ty>,
-// }
-
-// impl StackTy {
-//     // pub fn zip_extend_with<T>(xs: Vec<T>, ys: Vec<T>, fl: Fn(T) -> T, f: Fn(T, T)
-
-//     pub fn unify_ty_sets(xs: Vec<Ty>, ys: Vec<Ty>, xs_src_range: SrcRange, ys_src_range: SrcRange) -> Result<Vec<Ty>, TypeError> {
-//         let zip_len = cmp::max(xs.len(), ys.len());
-//         let xs_extended = xs.iter().map(|z|Some(z)).chain(std::iter::repeat(None).take(zip_len - xs.len()));
-//         let ys_extended = ys.iter().map(|z|Some(z)).chain(std::iter::repeat(None).take(zip_len - ys.len()));
-
-//         xs_extended.zip(ys_extended).enumerate().map(|ixy| {
-//             match ixy.1 {
-//                 (None, None) => Err(TypeError::StackTyUnifyNone {
-//                     lhs: xs.clone(),
-//                     rhs: ys.clone(),
-//                 }),
-//                 (Some(x), None) => Ok(*x),
-//                 (None, Some(y)) => Ok(*y),
-//                 (Some(x), Some(y)) => Ok(x.unify(*y, TyUnifyLocation {
-//                     lhs: xs_src_range.clone(),
-//                     rhs: ys_src_range.clone(),
-//                     stack_position: ixy.0,
-//                 })?),
-//             }
-
-//         }).collect()
-//     }
-
-//     pub fn diff_ty_sets(xs: Vec<Ty>, ys: Vec<Ty>) -> Result<Vec<Ty>, TypeError> {
-//         xs.iter().zip(ys.iter()).map(|x, y| {
-//             x.difference(y)
-//         }.collect()
-//     }
-
-//     pub fn union_ty_sets(xs: Vec<Ty>, ys: Vec<Ty>) -> Result<Vec<Ty>, TypeError> {
-//         // pad lengths and zip (pad with empty)
-//         xs.iter().zip(ys.iter()).map(|x, y| {
-//             x.union(y)
-//         }.collect()
-//     }
-
-//     pub fn unify(&self, other: Self) -> Result<Self, TypeError> {
-//         let middle_ty = Self::unify_ty_sets(self.out_type, other.in_type, self.src_range, other.src_range);
-//         let self_remainder = Self::diff_ty_sets(middle_ty, self.out_type);
-//         let other_remainder = Self::diff_ty_sets(middle_ty, other.in_type);
-//             in_type: self.in_type + self_remainder
-//             out_type: other.out_type + other_remainder
-
-//         StackTy {
-//             src_range: self.src_range.append(other.src_range)?,
-//             in_type Self::union_ty_sets(self.in_type, self_remainder),
-//             out_type Self::union_ty_sets(other.out_type, other_remainder),
-//         }
-//     }
-
-//     pub fn infer_instruction(instruction: &Instruction, src_location: usize) -> Self {
-//         let instruction_ty_sets = instruction.ty_sets();
-//         StackTy {
-//             src_range: SrcRange::singleton(src_location),
-//             in_type instruction_ty_sets.0,
-//             out_type instruction_ty_sets.1,
-//         }
-//     }
-
-//     // pub fn infer(instructions: Instructions) -> Result<Self, TypeError> {
-//     //     instructions.iter().enumerate()
-//     //         .map(|ix| Self::infer_instruction(ix.1, ix.0))
-//     //         .reduce(|memo, x| memo.unify(x))
-
-//     // }
-
-// }
-
-
-
-// #[derive(Debug, PartialEq, Error)]
-// pub enum TypeError {
-//     #[error("Ty::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
-//     TyUnifyEmpty {
-//         lhs: Ty,
-//         rhs: Ty,
-//         location: TyUnifyLocation,
-//     },
-
-//     // should be impossible
-//     #[error("StackTy::unify produced an attempt to unify None and None: lhs: {lhs:?}; rhs: {rhs:?}")]
-//     StackTyUnifyNone {
-//         lhs: Vec<Ty>,
-//         rhs: Vec<Ty>,
-//     },
-
-//     #[error("attempt to unify types of non-contiguous locations: lhs: {0:?}")]
-//     SrcRangeError(SrcRangeError),
-// }
+    // #[error("attempt to unify types of non-contiguous locations: lhs: {0:?}")]
+    // SrcRangeError(SrcRangeError),
+}
 
 // impl From<SrcRangeError> for TypeError {
 //     fn from(error: SrcRangeError) -> Self {
 //         Self::SrcRangeError(error)
 //     }
 // }
+
+
+
 
