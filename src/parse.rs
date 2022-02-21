@@ -24,12 +24,15 @@ pub fn parse_json(input: &str) -> Result<Instructions, ParseError> {
 }
 
 pub fn parse(input: &str) -> Result<Instructions, ParseError> {
-    input
-        .split(';')
-        .map(|term| term.trim())
-        .filter(|&term| !term.is_empty())
-        .map(|term| parse_instruction(term))
-        .collect()
+    Ok(Instructions {
+        instructions:
+            input
+            .split(';')
+            .map(|term| term.trim())
+            .filter(|&term| !term.is_empty())
+            .map(|term| parse_instruction(term))
+            .collect::<Result<Vec<Instruction>, ParseError>>()?,
+    })
 }
 
 fn parse_instruction(term: &str) -> Result<Instruction, ParseError> {
