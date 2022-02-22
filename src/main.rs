@@ -70,14 +70,18 @@ fn main() {
 
     // let json_instructions = parse_json()"
     let instructions_vec: Vec<Instruction> = vec![
-        Instruction::Push(Elem::Bool(true)),
-        Instruction::Restack(Restack::id()),
-        Instruction::AssertTrue,
+        // TEST #1
+        // Instruction::Push(Elem::Bool(true)),
+        // Instruction::Restack(Restack::id()),
+        // Instruction::AssertTrue,
 
-        // Instruction::UnpackJson(ElemSymbol::Object),
-        // Instruction::Restack(Restack::dup()),
+        // FOR DEBUGGING TYPER
+        Instruction::Push(Elem::Json(Default::default())),
 
-        // // x["queries"]
+        Instruction::UnpackJson(ElemSymbol::Object),
+        Instruction::Restack(Restack::dup()),
+
+        // x["queries"]
         // Instruction::Push(Elem::String("queries".to_string())),
         // Instruction::Lookup,
         // Instruction::UnpackJson(ElemSymbol::Array),
