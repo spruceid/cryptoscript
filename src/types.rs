@@ -197,10 +197,10 @@ impl ElemSymbol {
         ElemType {
             type_set: EnumSet::only(*self),
             info: locations.iter()
-                .map(|location|
+                .map(|&location|
                      ElemTypeInfo {
                          base_elem_type: BaseElemType::ElemSymbol(*self),
-                         location: *location,
+                         location: location,
                     }).collect(),
         }
     }
@@ -217,10 +217,10 @@ impl ElemType {
         ElemType {
             type_set: EnumSet::all(),
             info: locations.iter()
-                .map(|location|
+                .map(|&location|
                      ElemTypeInfo {
                          base_elem_type: BaseElemType::Any,
-                         location: *location,
+                         location: location,
                     }).collect(),
         }
     }
@@ -233,10 +233,10 @@ impl ElemType {
                           ElemSymbol::Array |
                           ElemSymbol::Object),
             info: locations.iter()
-                .map(|location|
+                .map(|&location|
                      ElemTypeInfo {
                          base_elem_type: BaseElemType::Concat,
-                         location: *location,
+                         location: location,
                     }).collect(),
         }
     }
@@ -247,10 +247,10 @@ impl ElemType {
                 enum_set!(ElemSymbol::Array |
                           ElemSymbol::Object),
             info: locations.iter()
-                .map(|location|
+                .map(|&location|
                      ElemTypeInfo {
                          base_elem_type: BaseElemType::Index,
-                         location: *location,
+                         location: location,
                     }).collect(),
         }
     }
@@ -259,10 +259,10 @@ impl ElemType {
         Self::concat_type(locations)
     }
 
-    pub fn unify(&self, other: Self) -> Result<Self, TypeError> {
+    pub fn unify(&self, other: Self) -> Result<Self, ElemTypeError> {
         let both = self.type_set.intersection(other.type_set);
         if both.is_empty() {
-            Err(TypeError::ElemTypeUnifyEmpty {
+            Err(ElemTypeError::UnifyEmpty {
                 lhs: self.clone(),
                 rhs: other.clone(),
             })
@@ -280,6 +280,24 @@ impl ElemType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TypeId {
     type_id: usize,
+}
+
+impl TypeId {
+    // TODO: test by checking:
+    // xs.map(TypeId).fold(x, offset) = TypeId(xs.fold(x, +))
+    pub fn offset(&self, offset: TypeId) -> Self {
+        TypeId {
+            type_id: self.type_id + offset.type_id,
+        }
+    }
+
+    pub fn update_type_id(&self, from: Self, to: Self) -> Self {
+        if *self == from {
+            to
+        } else {
+            *self
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -357,22 +375,55 @@ mod context_display_tests {
 }
 
 impl Context {
+    // TODO: simplify/normalize context
+    // Produce a version where (basis = [..]) are the first (0..)
+    // TypeId's and the rest are sorted from the original Context
+    //
+    // Also output a variable remapper
+    //
+    // pub fn normalize<I>(&self, basis: I) -> Result<Self, TypeError> 
+    // where
+    //     I: IntoIter<Iterm=TypeId>
+    // {
+    //     let mut source = self.clone();
+    //     let mut result = Self::new();
+    //     for type_id in basis {
+    //         let elem_type = source.get(type_id)?
+    //         result.push(elem_type);
+    //     _
+    // }
+
+    // // TODO: deprecated
+    // pub fn new_max(&self, other: Self) -> Self {
+    //     Context {
+    //         context: BTreeMap::new(),
+    //         next_type_id: TypeId {
+    //             type_id:
+    //                 cmp::max(self.next_type_id.type_id,
+    //                          other.next_type_id.type_id),
+    //         },
+    //     }
+    // }
+
+    // map is from other to result
+    // pub fn disjoint_union(&mut self, other: Self) -> Result<TypeIdMap, ContextError> {
+    //     let mut type_map = &TypeIdMap::new();
+    //     for (type_id, elem_type) in other.context.iter() {
+    //         type_map.push(*type_id, self.push(elem_type.clone()))
+    //             .or_else(|e| Err(ContextError::DisjointUnion {
+    //                 lhs: self.clone(),
+    //                 rhs: other,
+    //                 error: e,
+    //             }))?
+    //     }
+    //     Ok(*type_map)
+    // }
+
     pub fn new() -> Self {
         Context {
             context: BTreeMap::new(),
             next_type_id: TypeId {
                 type_id: 0,
-            },
-        }
-    }
-
-    pub fn new_max(&self, other: Self) -> Self {
-        Context {
-            context: BTreeMap::new(),
-            next_type_id: TypeId {
-                type_id:
-                    cmp::max(self.next_type_id.type_id,
-                             other.next_type_id.type_id),
             },
         }
     }
@@ -394,22 +445,95 @@ impl Context {
         push_id
     }
 
-    pub fn get(&mut self, index: &TypeId) -> Result<ElemType, TypeError> {
-        Ok(self.context.get(index).ok_or_else(|| TypeError::ContextGetUnknownTypeId {
+    pub fn offset(&self, offset: TypeId) -> Self {
+        Context {
+            context: self.context.iter().map(|(k, x)| (k.offset(offset), x.clone())).collect(),
+            next_type_id: self.next_type_id.offset(offset),
+        }
+    }
+
+    pub fn update_type_id(&mut self, from: TypeId, to: TypeId) -> Result<(), ContextError> {
+        if self.context.contains_key(&from) {
+            Ok(())
+        } else {
+            Err(ContextError::UpdateTypeIdFromMissing {
+                from: from,
+                to: to,
+                context: self.clone(),
+            })
+        }?;
+        if self.context.contains_key(&to) {
+            Err(ContextError::UpdateTypeIdToPresent {
+                from: from,
+                to: to,
+                context: self.clone(),
+            })
+        } else {
+            Ok(())
+        }?;
+        self.context = self.context.iter().map(|(k, x)| (k.update_type_id(from, to), x.clone())).collect();
+        self.next_type_id = cmp::max(self.next_type_id, to);
+        // Ok(Context {
+        //     context: self.context.iter().map(|(k, x)| (k.update_type_id(from, to), x.clone())).collect(),
+        //     next_type_id: cmp::max(self.next_type_id, to),
+        // })
+        Ok(())
+    }
+
+    // fail iff not disjoint iff intersection non-empty
+    pub fn disjoint_union(&mut self, other: Self) -> Result<(), ContextError> {
+        for (&type_id, elem_type) in other.context.iter() {
+            match self.context.insert(type_id, elem_type.clone()) {
+                None => {
+                    Ok(())
+                },
+                Some(conflicting_elem_type) => Err(ContextError::DisjointUnion {
+                    type_id: type_id,
+                    elem_type: elem_type.clone(),
+                    conflicting_elem_type: conflicting_elem_type,
+                    lhs: self.clone(),
+                    rhs: other.clone(),
+                }),
+            }?
+        }
+        self.next_type_id = cmp::max(self.next_type_id, other.next_type_id);
+        Ok(())
+    }
+
+    pub fn get(&mut self, index: &TypeId, error: &dyn Fn() -> ContextError) -> Result<ElemType, ContextError> {
+        Ok(self.context.get(index).ok_or_else(|| ContextError::GetUnknownTypeId {
             context: self.clone(),
             index: *index,
+            error: Box::new(error()),
         })?.clone())
     }
 
-    // pub fn push_unified(&mut self, xs: Self, ys: Self, xi: TypeId, yi: TypeId) -> Self {
-    //     _
-    // }
+    // unify the types of two TypeId's into the rhs
+    // removing the lhs
+    pub fn unify(&mut self, xi: TypeId, yi: TypeId) -> Result<(), ContextError> {
+        let x_type = self.context.remove(&xi).ok_or_else(|| ContextError::Unify {
+            xs: self.clone(),
+            xi: xi.clone(),
+            yi: yi.clone(),
+            is_lhs: true,
+        })?;
 
-    // TODO: remove mut xs/ys
-    pub fn unify(&mut self, mut xs: Self, mut ys: Self, xi: &TypeId, yi: &TypeId) -> Result<TypeId, TypeError> {
-        let x_type = xs.get(xi)?;
-        let y_type = ys.get(yi)?;
-        Ok(self.push(x_type.unify(y_type)?))
+        let y_type = self.context.remove(&yi).ok_or_else(|| ContextError::Unify {
+            xs: self.clone(),
+            xi: xi.clone(),
+            yi: yi.clone(),
+            is_lhs: false,
+        })?;
+
+        let xy_type = x_type.unify(y_type).or_else(|e| Err(ContextError::UnifyElemType {
+            xs: self.clone(),
+            xi: xi.clone(),
+            yi: yi.clone(),
+            error: e,
+        }))?;
+
+        self.context.insert(yi, xy_type);
+        Ok(())
     }
 }
 
@@ -420,6 +544,212 @@ pub struct Type {
     context: Context,
     i_type: Vec<TypeId>,
     o_type: Vec<TypeId>,
+}
+
+
+
+impl Type {
+    pub fn id() -> Self {
+        Type {
+            context: Context::new(),
+            i_type: vec![],
+            o_type: vec![],
+        }
+    }
+
+    // check whether all the TypeId's are valid
+    pub fn is_valid(&self) -> bool {
+        let next_type_id = self.context.next_type_id;
+        self.context.is_valid() &&
+        !(self.i_type.iter().any(|x| *x >= next_type_id) ||
+          self.o_type.iter().any(|x| *x >= next_type_id))
+    }
+
+    pub fn offset(&self, offset: TypeId) -> Self {
+        Type {
+            context: self.context.offset(offset),
+            i_type: self.i_type.iter().map(|x| x.offset(offset)).collect(),
+            o_type: self.o_type.iter().map(|x| x.offset(offset)).collect(),
+        }
+    }
+
+    pub fn next_type_id(&self) -> TypeId {
+        self.context.next_type_id
+    }
+
+    pub fn update_type_id(&mut self, from: TypeId, to: TypeId) -> Result<(), TypeError> {
+        self.context.update_type_id(from, to).map_err(|e| TypeError::UpdateTypeId(e))?;
+        self.i_type = self.i_type.iter().map(|x| x.update_type_id(from, to)).collect();
+        self.o_type = self.o_type.iter().map(|x| x.update_type_id(from, to)).collect();
+        // Ok(Type {
+        //     context: self.context.update_type_id(from, to).map_err(|e| TypeError::UpdateTypeId(e))?,
+        //     i_type: self.i_type.iter().map(|x| x.update_type_id(from, to)).collect(),
+        //     o_type: self.o_type.iter().map(|x| x.update_type_id(from, to)).collect(),
+        // })
+        Ok(())
+    }
+
+    // f : self
+    // g : other
+    // self.compose(other) : (f ++ g).type_of()
+    //
+    // input ->
+    // other.i_type
+    // other.o_type
+    // self.i_type
+    // self.o_type
+    // -> output
+    //
+    // 1. iterate through (zip(self.o_type, other.i_type)) and unify the pairs into a new context
+    // 2. collect the remainder and add them to the context
+    // 3. add the remainder to (self.i_type, other.o_type), with replaced variables
+    pub fn compose(&self, other: Self) -> Result<Self, TypeError> {
+        println!("");
+        println!("composing:\n{0}\n\nAND\n{1}\n", self, other);
+
+        let mut context = self.context.clone();
+        println!("context: {}", context);
+        println!("context.next_type_id: {:?}", context.next_type_id.type_id);
+
+        let offset_other = other.offset(self.next_type_id());
+        println!("offset_other: {}", offset_other);
+
+        context.disjoint_union(offset_other.context.clone())
+            .map_err(|e| TypeError::ContextError(e))?;
+        println!("context union: {}", context);
+
+        let mut mut_offset_other = offset_other.clone();
+        let mut zip_len = 0;
+        let other_o_type = offset_other.o_type.iter().clone();
+        let self_i_type = self.i_type.iter().clone();
+        other_o_type.zip(self_i_type).try_for_each(|(&o_type, &i_type)| {
+            zip_len += 1;
+            context
+                .unify(o_type, i_type)
+                .map_err(|e| TypeError::ContextError(e))?;
+            mut_offset_other
+                .update_type_id(o_type, i_type)?;
+            Ok(())
+        })?;
+
+        Ok(Type {
+            context: context,
+            i_type: mut_offset_other.i_type.iter().chain(self.i_type.iter().skip(zip_len)).copied().collect(),
+            o_type: self.o_type.iter().chain(mut_offset_other.o_type.iter().skip(zip_len)).copied().collect(),
+        })
+
+
+
+        // let mut offset_other = other.offset(self.next_type_id()).clone();
+        // context.disjoint_union(offset_other.context.clone())
+        //     .map_err(|e| TypeError::ContextError(e))?;
+
+        // let mut other_o_type = offset_other.o_type.iter().clone();
+        // let mut self_i_type = self.i_type.iter().clone();
+        // other_o_type.by_ref().zip(self_i_type.by_ref()).try_for_each(|(&o_type, &i_type)| {
+        //     context
+        //         .unify(o_type, i_type)
+        //         .map_err(|e| TypeError::ContextError(e))?;
+        //     offset_other
+        //         .update_type_id(o_type, i_type)?;
+        //     Ok(())
+        // })?;
+
+        // Ok(Type {
+        //     context: context,
+        //     i_type: offset_other.i_type.iter().chain(self_i_type).copied().collect(),
+        //     o_type: self.o_type.iter().chain(other_o_type).copied().collect(),
+        // })
+    }
+
+
+        // other_o_type.zip(self_i_type).enumerate().try_for_each(|(i, (&o_type, &i_type))| {
+
+            // self_to_context.push(*i_type, *o_type).or_else(|_| Ok(()))?;
+            // context.unify(other_to_context.get(o_type, i)?, *i_type)
+
+        // let mut i_type_result = offset_other.i_type.clone();
+        // let mut o_type_result = self.o_type.clone();
+
+        // for (i, &o_type) in other_o_type.enumerate() {
+        //     o_type_result.push(o_type)
+        // }
+
+        // let other_to_context = context.disjoint_union(other.context)
+        //     .map_err(|e| TypeError::ComposeDisjointUnion(e))?;
+        // let self_to_context = TypeIdMap::new();
+
+
+        // let self_context = &self.context;
+        // let other_context = &other.context;
+
+        // let mut context = self_context.clone().new_max(other_context.clone());
+        // let mut self_type_map = TypeIdMap::new();
+        // let mut other_type_map = TypeIdMap::new();
+
+        // let mut i_type = vec![];
+        // let mut o_type = vec![];
+
+        // other.o_type.iter().zip(self.i_type.clone()).try_for_each(|(o_type, i_type)| {
+        //     let new_type_id = context
+        //         .unify(self_context.clone(),
+        //                other_context.clone(),
+        //                &i_type,
+        //                &o_type)?;
+        //     self_type_map.push(i_type, new_type_id)?;
+        //     other_type_map.push(*o_type, new_type_id)?;
+        //     Ok(())
+        // })?;
+
+        // TODO: replace with context merging
+        // match after_zip(other.o_type.clone(), self.i_type.clone()) {
+        //     Ok(other_o_type_remainder) =>
+        //         for o_type in other_o_type_remainder {
+        //             let new_o_type = context.push(other.context.clone().get(&o_type)?);
+        //             other_type_map.push(o_type.clone(), new_o_type)?;
+        //             i_type.push(new_o_type.clone());
+        //         },
+        //     Err(self_i_type_remainder) =>
+        //         for i_type in self_i_type_remainder {
+        //             let new_i_type = context.push(self.context.clone().get(&i_type)?);
+        //             self_type_map.push(i_type.clone(), new_i_type)?;
+        //             o_type.push(new_i_type.clone());
+        //         },
+        // }
+
+        // let mut i_type_prefix = other_type_map.run(other.i_type.clone())?;
+        // let mut o_type_prefix = self_type_map.run(self.o_type.clone())?;
+        // i_type_prefix.append(&mut i_type);
+        // o_type_prefix.append(&mut o_type);
+        // Ok(Type {
+        //     context: context.clone(),
+        //     i_type: i_type_prefix,
+        //     // .iter().chain(i_type.iter()).collect(),
+        //     o_type: o_type_prefix,
+        //     // o_type: .iter().chain(o_type.iter()).collect(),
+
+        //     // i_type: other_type_map.run(other.i_type.clone())?.iter().chain(i_type.iter()).collect(),
+        //     // o_type: self_type_map.run(self.o_type.clone())?.iter().chain(o_type.iter()).collect(),
+
+        //         // other.i_type.clone().iter()
+        //         // .map(|x| Ok(other_type_map
+        //         //      .get(x)
+        //         //      .ok_or_else(|| TypeError::ContextRemapUnknownTypeId {
+        //         //          context: context.clone(),
+        //         //          type_map: other_type_map.clone(),
+        //         //          index: *x,
+        //         //     })?.clone())).chain(i_type.iter().map(move |x| Ok(*x))).collect::<Result<Vec<TypeId>, TypeError>>()?,
+
+        //     // o_type: self.o_type.clone().iter()
+        //     //     .map(|x| Ok(self_type_map
+        //     //          .get(x)
+        //     //          .ok_or_else(|| TypeError::ContextRemapUnknownTypeId {
+        //     //              context: context.clone(),
+        //     //              type_map: self_type_map.clone(),
+        //     //              index: *x,
+        //     //         })?.clone())).chain(o_type.iter().map(move |x| Ok(*x))).collect::<Result<Vec<TypeId>, TypeError>>()?,
+        // })
+
 }
 
 
@@ -448,7 +778,6 @@ pub struct Type {
 // [t0, t1, .., tN] ->
 // [ti, tj, .., tk]
 // ```
-
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f,
@@ -517,94 +846,14 @@ mod type_display_tests {
     }
 }
 
-impl Type {
-    // check whether all the TypeId's are valid
-    pub fn is_valid(&self) -> bool {
-        let next_type_id = self.context.next_type_id;
-        self.context.is_valid() &&
-        !(self.i_type.iter().any(|x| *x >= next_type_id) ||
-          self.o_type.iter().any(|x| *x >= next_type_id))
-    }
 
-    // TODO:
-    //     - make method to simplify context
 
-    // TODO: this is next, figure out how to represent/implement replacements of
-    //     variables, e.g. starting larger than both or collecting maps (old_lhs -> new_lhs)
 
-    // f : self
-    // g : other
-    // self.compose(other) : (f ++ g).type_of()
-    //
-    // input ->
-    // other.i_type
-    // other.o_type
-    // self.i_type
-    // self.o_type
-    // -> output
-    //
-    // 1. iterate through (zip(self.o_type, other.i_type)) and unify the pairs into a new context
-    // 2. collect the remainder and add them to the context
-    // 3. add the remainder to (self.i_type, other.o_type), with replaced variables
-    pub fn compose(&self, other: Self) -> Result<Self, TypeError> {
-        let self_context = &self.context;
-        let other_context = &other.context;
 
-        let mut context = self_context.clone().new_max(other_context.clone());
-        let mut self_type_map: BTreeMap<TypeId, TypeId> = BTreeMap::new();
-        let mut other_type_map: BTreeMap<TypeId, TypeId> = BTreeMap::new();
 
-        let mut i_type = vec![];
-        let mut o_type = vec![];
-
-        other.o_type.iter().zip(self.i_type.clone()).try_for_each(|(o_type, i_type)| {
-            let new_type_id = context
-                .unify(self_context.clone(),
-                       other_context.clone(),
-                       &i_type,
-                       &o_type)?;
-            self_type_map.insert(i_type, new_type_id);
-            other_type_map.insert(*o_type, new_type_id);
-            Ok(())
-        })?;
-
-        match after_zip(other.o_type.clone(), self.i_type.clone()) {
-            Ok(other_o_type_remainder) =>
-                for o_type in other_o_type_remainder {
-                    let new_o_type = context.push(other.context.clone().get(&o_type)?);
-                    other_type_map.insert(o_type.clone(), new_o_type);
-                    i_type.push(new_o_type.clone());
-                },
-            Err(self_i_type_remainder) =>
-                for i_type in self_i_type_remainder {
-                    let new_i_type = context.push(self.context.clone().get(&i_type)?);
-                    self_type_map.insert(i_type.clone(), new_i_type);
-                    o_type.push(new_i_type.clone());
-                },
-        }
-
-        Ok(Type {
-            context: context,
-            i_type: other.i_type.clone().iter()
-                .map(move |x| Ok(other_type_map
-                     .get(x)
-                     .ok_or_else(|| TypeError::ContextGetUnknownTypeId { // TODO: new error
-                         context: other.context.clone(),
-                         index: *x,
-                    })?.clone())).chain(i_type.iter().map(move |x| Ok(*x))).collect::<Result<Vec<TypeId>, TypeError>>()?,
-            o_type: self.o_type.clone().iter()
-                .map(|x| Ok(self_type_map
-                     .get(x)
-                     .ok_or_else(|| TypeError::ContextGetUnknownTypeId {
-                         context: self.context.clone(),
-                         index: *x,
-                    })?.clone())).chain(o_type.iter().map(move |x| Ok(*x))).collect::<Result<Vec<TypeId>, TypeError>>()?,
-        })
-    }
-}
 
 impl Restack {
-    // TODO: fix locations
+    // TODO: fix locations: out locations are mislabeled as in locations
     pub fn type_of(&self, line_no: LineNo) -> Result<Type, RestackError> {
         let mut context = Context::new();
         let mut restack_type: Vec<TypeId> = (0..self.restack_depth)
@@ -792,13 +1041,107 @@ impl Instruction {
     }
 }
 
+// TODO: split up TypeError
+// TODO: add layers of detail to TypeIdMapGetUnknownTypeId
+
+
 #[derive(Debug, PartialEq, Error)]
-pub enum TypeError {
-    #[error("Context::get applied to a TypeId: {index:?}, not in the Context: {context:?}")]
-    ContextGetUnknownTypeId {
+pub enum ElemTypeError {
+    #[error("ElemType::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
+    UnifyEmpty {
+        lhs: ElemType,
+        rhs: ElemType,
+        // location: TyUnifyLocation,
+    },
+}
+
+// #[derive(Debug, PartialEq, Error)]
+// pub enum TypeIdMapError {
+//     #[error("TypeIdMap::get attempted to get a TypeId: {index:?}, not in the map: {type_map:?}; at location in TypeIdMap::run {location:?}")]
+//     GetUnknownTypeId {
+//         index: TypeId,
+//         location: usize,
+//         type_map: TypeIdMap,
+//     },
+
+//     #[error("TypeIdMap::push already exists: mapping from: {from:?}, to: {to:?}, in TypeIdMap {map:?}")]
+//     PushExists {
+//         from: TypeId,
+//         to: TypeId,
+//         map: TypeIdMap,
+//     },
+// }
+
+#[derive(Debug, PartialEq, Error)]
+pub enum ContextError {
+    #[error("Context::get applied to a TypeId: {index:?}, not in the Context: {context:?}, error: {error:?}")]
+    GetUnknownTypeId {
         context: Context,
         index: TypeId,
+        error: Box<Self>,
     },
+
+    #[error("Context::disjoint_union applied to lhs: {lhs:?}, and rhs: {rhs:?}, /
+            with type_id: {type_id:?}, and elem_type: {elem_type:?}, conflicted /
+            with lhs entry conflicting_elem_type: {conflicting_elem_type:?}")]
+    DisjointUnion {
+        type_id: TypeId,
+        elem_type: ElemType,
+        conflicting_elem_type: ElemType,
+        lhs: Context,
+        rhs: Context,
+    },
+
+    // #[error("Context::disjoint_union applied to lhs: {lhs:?}, and rhs: {rhs:?}, resulted in impossible TypeIdMapError: {error:?}")]
+    // DisjointUnion {
+    //     lhs: Context,
+    //     rhs: Context,
+    //     error: TypeIdMapError,
+    // },
+
+    #[error("Context::update_type_id called on missing 'from: TypeId':\n from: {from:?}\n to: {to:?}\n context: {context:?}")]
+    UpdateTypeIdFromMissing {
+        from: TypeId,
+        to: TypeId,
+        context: Context,
+    },
+
+    #[error("Context::update_type_id called on already-present 'to: TypeId':\n from: {from:?}\n to: {to:?}\n context: {context:?}")]
+    UpdateTypeIdToPresent {
+        from: TypeId,
+        to: TypeId,
+        context: Context,
+    },
+
+    #[error("Context::unify failed:\n xs: {xs:?}\n xi: {xi:?}\n yi: {yi:?}\n is_lhs: {is_lhs:?}\n")]
+    Unify {
+            xs: Context,
+            xi: TypeId,
+            yi: TypeId,
+            is_lhs: bool,
+    },
+
+    #[error("Context::unify failed to unify ElemType's:\n xs: {xs:?}\n xi: {xi:?}\n yi: {yi:?}\n elem_error: {error:?}\n")]
+    UnifyElemType {
+            xs: Context,
+            xi: TypeId,
+            yi: TypeId,
+            error: ElemTypeError,
+    },
+}
+
+
+#[derive(Debug, PartialEq, Error)]
+pub enum TypeError {
+    #[error("ContextError {0}")]
+    ContextError(ContextError),
+
+    #[error("TypeError::update_type_id failed when updating the Context: {0}")]
+    UpdateTypeId(ContextError),
+
+    #[error("TypeError::compose disjoint_union {0}")]
+    ComposeDisjointUnion(ContextError),
+
 
     #[error("Instruction::type_of resulted in restack error: {0:?}")]
     InstructionTypeOfRestack(RestackError),
@@ -807,13 +1150,6 @@ pub enum TypeError {
     InstructionTypeOfDetail {
         instruction: Instruction,
         error: Box<Self>,
-    },
-
-    #[error("ElemType::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
-    ElemTypeUnifyEmpty {
-        lhs: ElemType,
-        rhs: ElemType,
-        // location: TyUnifyLocation,
     },
 
     #[error("Instructions::type_of called on an empty Vec of Instruction's")]
@@ -825,21 +1161,13 @@ pub enum TypeError {
         error: Box<Self>,
     },
 
-
-    // // should be impossible
-    // #[error("StackTy::unify produced an attempt to unify None and None: lhs: {lhs:?}; rhs: {rhs:?}")]
-    // StackTyUnifyNone {
-    //     lhs: Vec<Ty>,
-    //     rhs: Vec<Ty>,
-    // },
-
-    // #[error("attempt to unify types of non-contiguous locations: lhs: {0:?}")]
-    // SrcRangeError(SrcRangeError),
+    // #[error("applying TypeIdMap failed: {0:?}")]
+    // TypeIdMapError(TypeIdMapError),
 }
 
-// impl From<SrcRangeError> for TypeError {
-//     fn from(error: SrcRangeError) -> Self {
-//         Self::SrcRangeError(error)
+// impl From<TypeIdMapError> for TypeError {
+//     fn from(error: TypeIdMapError) -> Self {
+//         Self::TypeIdMapError(error)
 //     }
 // }
 
@@ -861,17 +1189,60 @@ impl IntoIterator for Instructions {
 
 impl Instructions {
     pub fn type_of(&self) -> Result<Type, TypeError> {
-        let mut instructions = self.instructions.clone();
-        let first_instruction = instructions.pop().ok_or_else(|| TypeError::InstructionsTypeOfEmpty)?;
-        let mut current_type = first_instruction.type_of(From::from(0))?;
-        for (i, instruction) in instructions.iter().enumerate() {
+        let mut current_type = Type::id();
+        for (i, instruction) in self.instructions.iter().enumerate() {
             current_type = current_type.compose(instruction.type_of(From::from(i + 1))?)
                 .or_else(|e| Err(TypeError::InstructionsTypeOfLineNo { // TODO: deprecated by Location
                     line_no: i,
                     error: Box::new(e),
                 }))?;
+
+            println!("line {i}: {current_type}", i = i, current_type = current_type);
         }
         Ok(current_type)
     }
 }
+
+
+// #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+// pub struct TypeIdMap {
+//     map: BTreeMap<TypeId, TypeId>,
+// }
+
+
+// impl TypeIdMap {
+//     pub fn new() -> Self {
+//         TypeIdMap {
+//             map: BTreeMap::new(),
+//         }
+//     }
+
+//     pub fn push(&mut self, from: TypeId, to: TypeId) -> Result<(), TypeIdMapError> {
+//         if self.map.contains_key(&from) {
+//             Err(TypeIdMapError::PushExists {
+//                 from: from,
+//                 to: to,
+//                 map: self.clone(),
+//             })
+//         } else {
+//             self.map.insert(from, to);
+//             Ok(())
+//         }
+//     }
+
+//     pub fn get(&self, index: &TypeId, location: usize) -> Result<&TypeId, TypeIdMapError> {
+//         self.map.get(index)
+//             .ok_or_else(|| TypeIdMapError::GetUnknownTypeId {
+//                 index: index.clone(),
+//                 location: location,
+//                 type_map: self.clone(),
+//             })
+//     }
+
+//     pub fn run(&self, type_vars: Vec<TypeId>) -> Result<Vec<TypeId>, TypeIdMapError> {
+//         type_vars.iter().enumerate().map(|(i, x)| Ok(self.get(x, i)?.clone())).collect()
+//     }
+// }
+
+
 
