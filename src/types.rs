@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use std::cmp;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+// use std::alloc::string;
+use std::marker::PhantomData;
 
 use enumset::{EnumSet, enum_set};
 use serde::{Deserialize, Serialize};
@@ -1091,6 +1093,310 @@ impl TypeIdMap {
         type_vars.iter().enumerate().map(|(i, x)| Ok(self.get(x, i)?.clone())).collect()
     }
 }
+
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////////////////
+//////////////////////////////
+////////////////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+
+// #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+// pub struct ElemType {
+//     type_set: EnumSet<ElemSymbol>,
+//     info: Vec<ElemTypeInfo>,
+// }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TUnit {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TBool {
+    get_bool: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TNumber {
+    number: serde_json::Number,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TBytes {
+    bytes: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TString {
+    string: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TArray {
+    array: Vec<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TObject {
+    object: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct TJson {
+    json: serde_json::Value,
+}
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub enum Elem {
+//     Unit,
+//     Bool(bool),
+//     Number(Number),
+//     Bytes(Vec<u8>),
+//     String(String),
+//     Array(Vec<Value>),
+//     Object(Map<String, Value>),
+//     Json(Value),
+// }
+
+pub trait IsElem {
+    fn to_elem(&self) -> Elem;
+}
+
+impl IsElem for TUnit {
+    fn to_elem(&self) -> Elem {
+        Elem::Unit
+    }
+}
+
+impl IsElem for TBool {
+    fn to_elem(&self) -> Elem {
+        Elem::Bool(self.get_bool)
+    }
+}
+
+// trait Elaborate<T> {
+//     type Elab: IsElem;
+// }
+
+pub struct NoHead {}
+
+pub trait Trait<T> {}
+impl<T> Trait<T> for NoHead {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Nil<T> {
+    t: PhantomData<T>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cons<T, U: Trait<T>, V: HList<T>> {
+    t: PhantomData<T>,
+    hd: U,
+    tl: V,
+}
+
+pub trait HList<T> {
+    type Hd: Trait<T>;
+    type Tl: HList<T>;
+
+    fn is_empty(&self) -> bool;
+    fn hd(&self) -> Self::Hd;
+    fn tl(&self) -> Self::Tl;
+    fn cons<U: Trait<T>>(&self, x: U) -> Cons<T, U, Self> where Self: Sized;
+}
+
+impl<T: Clone> HList<T> for Nil<T> {
+    type Hd = NoHead;
+    type Tl = Nil<T>;
+
+    fn is_empty(&self) -> bool {
+        true
+    }
+
+    fn hd(&self) -> Self::Hd {
+        NoHead {}
+    }
+
+    fn tl(&self) -> Self::Tl {
+        (*self).clone()
+    }
+
+    fn cons<U: Trait<T>>(&self, x: U) -> Cons<T, U, Self>
+    where
+        Self: Sized,
+    {
+        Cons {
+            t: PhantomData,
+            hd: x,
+            tl: (*self).clone(),
+        }
+    }
+}
+
+impl<T: Clone, U: Clone + Trait<T>, V: Clone + HList<T>> HList<T> for Cons<T, U, V> {
+    type Hd = U;
+    type Tl = V;
+
+    fn is_empty(&self) -> bool {
+        false
+    }
+
+    fn hd(&self) -> Self::Hd {
+        self.hd.clone()
+    }
+
+    fn tl(&self) -> Self::Tl {
+        self.tl.clone()
+    }
+
+    fn cons<W: Trait<T>>(&self, x: W) -> Cons<T, W, Self> {
+        Cons {
+            t: PhantomData,
+            hd: x,
+            tl: (*self).clone(),
+        }
+    }
+}
+
+
+
+
+
+// pub struct Nil<T: IsElem> {
+//     nil: T,
+// }
+
+// pub struct Cons<T: IsElem, U: SymbolList> {
+//     hd: T,
+//     tl: U,
+// }
+
+// pub trait SymbolList {
+// }
+
+// pub struct Cons<T: IsElem, U: IntoIterator> {
+//     hd: T,
+//     tl: U,
+// }
+
+
+
+// impl SymbolList for Nil<T> 
+
+
+
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+// pub enum Symbol {
+//     Unit,
+//     Bool,
+//     Number,
+//     Bytes,
+//     String,
+//     Array,
+//     Object,
+//     Json,
+// }
+
+
+// trait Elaborate<const T: Symbol> {
+//     type Elab;
+
+//     fn elaborate(x: &Self::Elab) -> Elem;
+//     fn elaborate_match(x: &Elem) -> Option<Self::Elab>;
+// }
+
+// #[derive(Clone, Debug, PartialOrd, Ord, Serialize, Deserialize)]
+// #[derive(PartialEq, Eq)]
+// pub enum SymbolList {
+//     Nil,
+//     Cons(Symbol, Box<SymbolList>),
+// }
+
+
+// trait Elaborates<const N: usize, const T: SymbolList> {
+//     // type Elab;
+
+//     // fn elaborate(x: &Self::Elab) -> Elem;
+//     // fn elaborate_match(x: &Elem) -> Option<Self::Elab>;
+// }
+
+
+// pub enum Instr<const ARGS: Vec<EnumSet<ElemSymbol>>, const RET: EnumSet<ElemSymbol>> {
+//     Func(Box(dyn Fn(
 
 
 
