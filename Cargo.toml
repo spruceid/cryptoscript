@@ -6,15 +6,16 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+dyn-clone = "1.0.4"
 enumset = { version = "1.0.8", features = ["serde"] }
 generic-array = "0.14"
 hex = "0.4"
 hex-literal = "0.3"
 k256 = { version = "0.10.2", features = ["std", "ecdsa", "serde"] }
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 sha2 = "0.9"
 sha3 = "0.9"
 thiserror = "1.0"
-quickcheck = "1.0.3"
-quickcheck_macros = "1.0.0"

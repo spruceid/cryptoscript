@@ -6,6 +6,7 @@ mod elem;
 pub use elem::{Elem, ElemSymbol};
 mod types;
 pub use types::{Instruction, Instructions};
+// , demo_triple, demo_triple_with_tl_handles_intermediate_types, HList
 mod parse;
 pub use parse::{parse, parse_json};
 mod executor;

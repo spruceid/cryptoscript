@@ -8,6 +8,7 @@ use std::fmt::{Display, Formatter};
 // use std::alloc::string;
 use std::marker::PhantomData;
 
+use dyn_clone::DynClone;
 use enumset::{EnumSet, enum_set};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -1176,227 +1177,333 @@ impl TypeIdMap {
 ////////////
 //////
 
-// #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-// pub struct ElemType {
-//     type_set: EnumSet<ElemSymbol>,
-//     info: Vec<ElemTypeInfo>,
-// }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TUnit {}
+pub struct TUnit {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TBool {
+pub struct TBool {
     get_bool: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TNumber {
+pub struct TNumber {
     number: serde_json::Number,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TBytes {
+pub struct TBytes {
     bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TString {
+pub struct TString {
     string: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TArray {
+pub struct TArray {
     array: Vec<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TObject {
+pub struct TObject {
     object: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TJson {
+pub struct TJson {
     json: serde_json::Value,
 }
 
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub enum Elem {
-//     Unit,
-//     Bool(bool),
-//     Number(Number),
-//     Bytes(Vec<u8>),
-//     String(String),
-//     Array(Vec<Value>),
-//     Object(Map<String, Value>),
-//     Json(Value),
-// }
 
-pub trait IsElem {
-    fn to_elem(&self) -> Elem;
+
+
+
+// Deriving a string from the type without any values allows debugging TEq
+pub trait TypeName {
+    fn type_name(x: PhantomData<Self>) -> &'static str;
 }
 
-impl IsElem for TUnit {
-    fn to_elem(&self) -> Elem {
-        Elem::Unit
+impl TypeName for TUnit {
+    fn type_name(_: PhantomData<Self>) -> &'static str {
+        "Unit"
     }
 }
 
-impl IsElem for TBool {
-    fn to_elem(&self) -> Elem {
-        Elem::Bool(self.get_bool)
+
+pub trait Teq<T>: DynClone {
+    type Other;
+
+    fn transport(&self, x: T) -> Self::Other;
+}
+
+impl<T, U: Clone> Teq<T> for U {
+    type Other = T;
+
+    fn transport(&self, x: T) -> Self::Other {
+        x
     }
 }
 
-// trait Elaborate<T> {
-//     type Elab: IsElem;
-// }
+// dyn_clone::clone_trait_object!(Teq);
 
-pub struct NoHead {}
-
-pub trait Trait<T> {}
-impl<T> Trait<T> for NoHead {}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Nil<T> {
-    t: PhantomData<T>,
+// #[derive(Clone)]
+pub struct TEq<T, U>
+{
+    teq: Box<dyn Teq<T, Other = U>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Cons<T, U: Trait<T>, V: HList<T>> {
-    t: PhantomData<T>,
-    hd: U,
-    tl: V,
-}
-
-pub trait HList<T> {
-    type Hd: Trait<T>;
-    type Tl: HList<T>;
-
-    fn is_empty(&self) -> bool;
-    fn hd(&self) -> Self::Hd;
-    fn tl(&self) -> Self::Tl;
-    fn cons<U: Trait<T>>(&self, x: U) -> Cons<T, U, Self> where Self: Sized;
-}
-
-impl<T: Clone> HList<T> for Nil<T> {
-    type Hd = NoHead;
-    type Tl = Nil<T>;
-
-    fn is_empty(&self) -> bool {
+impl<T, U> PartialEq for TEq<T, U> {
+    fn eq(&self, _other: &Self) -> bool {
         true
     }
+}
 
-    fn hd(&self) -> Self::Hd {
-        NoHead {}
+impl<T, U> Eq for TEq<T, U> {}
+
+impl<T, U> TEq<T, U> {
+    pub fn transport(&self, x: T) -> U {
+        (*self.teq).transport(x)
     }
 
-    fn tl(&self) -> Self::Tl {
-        (*self).clone()
-    }
+    // // TODO: compose
+    // pub fn compose<V>(&self, uv: TEq<U, V>) -> TEq<T, V> {
+    //     TEq {
+    //         teq: Box::new(()),
+    //     }
+    // }
+}
 
-    fn cons<U: Trait<T>>(&self, x: U) -> Cons<T, U, Self>
-    where
-        Self: Sized,
-    {
-        Cons {
-            t: PhantomData,
-            hd: x,
-            tl: (*self).clone(),
+impl<T> TEq<T, T> {
+    pub fn refl(_x: PhantomData<T>) -> Self {
+        TEq {
+            teq: Box::new(()),
         }
     }
 }
 
-impl<T: Clone, U: Clone + Trait<T>, V: Clone + HList<T>> HList<T> for Cons<T, U, V> {
-    type Hd = U;
-    type Tl = V;
-
-    fn is_empty(&self) -> bool {
-        false
+impl<T: TypeName, U: TypeName> fmt::Debug for TEq<T, U> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Teq {{ teq: Teq<{0}, {1}> }}", TypeName::type_name(PhantomData::<T>), TypeName::type_name(PhantomData::<T>))
     }
+}
 
-    fn hd(&self) -> Self::Hd {
-        self.hd.clone()
-    }
-
-    fn tl(&self) -> Self::Tl {
-        self.tl.clone()
-    }
-
-    fn cons<W: Trait<T>>(&self, x: W) -> Cons<T, W, Self> {
-        Cons {
-            t: PhantomData,
-            hd: x,
-            tl: (*self).clone(),
+impl<T, U> Clone for TEq<T, U> {
+    fn clone(&self) -> Self {
+        TEq {
+            teq: dyn_clone::clone_box(&*self.teq),
         }
+
+        // self.compose(TEq::refl(PhantomData::<U>))
     }
 }
 
 
+#[derive(Clone, PartialEq, Eq)]
+pub enum IsElem<T> {
+    Unit(TEq<T, TUnit>),
+    Bool(TEq<T, TBool>),
+    // Number(TEq<T, serde_json::Number>),
+    // Bytes(TEq<T, Vec<u8>>),
+    // String(TEq<T, String>),
+    // Array(TEq<T, Vec<serde_json::Value>>),
+    // Object(TEq<T, serde_json::Map<String, serde_json::Value>>),
+    // Json(TEq<T, serde_json::Value>),
+}
 
+impl<T: TypeName> fmt::Debug for IsElem<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "IsElem {}", TypeName::type_name(PhantomData::<T>))
+    }
+}
 
-
-// pub struct Nil<T: IsElem> {
-//     nil: T,
-// }
-
-// pub struct Cons<T: IsElem, U: SymbolList> {
-//     hd: T,
-//     tl: U,
-// }
-
-// pub trait SymbolList {
-// }
-
-// pub struct Cons<T: IsElem, U: IntoIterator> {
-//     hd: T,
-//     tl: U,
-// }
-
-
-
-// impl SymbolList for Nil<T> 
-
-
-
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-// pub enum Symbol {
-//     Unit,
-//     Bool,
-//     Number,
-//     Bytes,
-//     String,
-//     Array,
-//     Object,
-//     Json,
+// impl<T: TypeName, U: TypeName> fmt::Debug for TEq<T, U> {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+//         write!(f, "Teq {{ teq: Teq<{0}, {1}> }}", TypeName::type_name(PhantomData<T>), TypeName::type_name(PhantomData<T>))
+//     }
 // }
 
 
-// trait Elaborate<const T: Symbol> {
-//     type Elab;
 
-//     fn elaborate(x: &Self::Elab) -> Elem;
-//     fn elaborate_match(x: &Elem) -> Option<Self::Elab>;
+
+impl<T> IsElem<T> {
+    pub fn elem_symbol(&self) -> ElemSymbol {
+        match self {
+            Self::Unit(_) => ElemSymbol::Unit,
+            Self::Bool(_) => ElemSymbol::Bool,
+            // Self::Number(_) => ElemSymbol::Number,
+            // Self::Bytes(_) => ElemSymbol::Bytes,
+            // Self::String(_) => ElemSymbol::String,
+            // Self::Array(_) => ElemSymbol::Array,
+            // Self::Object(_) => ElemSymbol::Object,
+            // Self::Json(_) => ElemSymbol::Json,
+        }
+    }
+
+    pub fn to_elem(&self, x: T) -> Elem {
+        match self {
+            Self::Unit(_) => Elem::Unit,
+            Self::Bool(eq) => Elem::Bool(eq.transport(x).get_bool),
+            // Self::Number(eq) => Elem::Number(eq.transport(x)),
+            // Self::Bytes(eq) => Elem::Bytes(eq.transport(x)),
+            // Self::String(eq) => Elem::String(eq.transport(x)),
+            // Self::Array(eq) => Elem::Array(eq.transport(x)),
+            // Self::Object(eq) => Elem::Object(eq.transport(x)),
+            // Self::Json(eq) => Elem::Json(eq.transport(x)),
+        }
+    }
+
+    // TODO: from_elem
+    // fn from_elem(x: &Elem) -> Option<Self> where Self: Sized;
+}
+
+
+// fn fold<B, F>(&self, init: B, f: F) -> B where F: Fn(B, Elem) -> B;
+pub trait HList: Clone + IntoIterator<Item = Elem> {
+    type Hd;
+    type Tl: HList;
+
+    // fn is_empty(&self) -> bool;
+
+    fn hd(&self) -> Self::Hd;
+    fn hd_is_elem(&self) -> IsElem<Self::Hd>;
+
+    // fn tl(&self) -> Self::Tl;
+    // fn cons<T>(&self, x: T, is_elem: IsElem<T>) -> Cons<T, Self> where Self: Sized;
+
+}
+
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Nil { }
+
+impl Iterator for Nil {
+    type Item = Elem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+impl HList for Nil {
+    type Hd = TUnit;
+    type Tl = Nil;
+
+    // fn is_empty(&self) -> bool {
+    //     true
+    // }
+
+    fn hd(&self) -> Self::Hd {
+        TUnit {}
+    }
+
+    fn hd_is_elem(&self) -> IsElem<Self::Hd> {
+        IsElem::Unit(TEq::refl(PhantomData::<Self::Hd>))
+    }
+
+    // fn tl(&self) -> Self::Tl {
+    //     (*self).clone()
+    // }
+
+    // fn cons<U: Trait<T>>(&self, x: U) -> Cons<T, U, Self>
+    // where
+    //     Self: Sized,
+    // {
+    //     Cons {
+    //         t: PhantomData,
+    //         hd: x,
+    //         tl: (*self).clone(),
+    //     }
+    // }
+}
+
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct Cons<T, U: HList> {
+    is_elem: IsElem<T>,
+    hd: T,
+    tl: U,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct IterCons<T, U: HList> {
+    cons: Cons<T, U>,
+    at_head: bool,
+}
+
+impl<T: Copy, U: HList> IntoIterator for Cons<T, U> {
+    type Item = Elem;
+    type IntoIter = IterCons<T, U>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IterCons {
+            cons: self,
+            at_head: true,
+        }
+    }
+}
+
+impl<T: Copy, U: HList> Iterator for IterCons<T, U> {
+    type Item = Elem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.at_head {
+            Some(self.cons.hd_is_elem().to_elem(self.cons.hd))
+        } else {
+            let self_cons = self.cons.clone();
+            *self = self_cons.into_iter();
+            self.next()
+        }
+    }
+}
+
+impl<T: Copy, U: HList> HList for Cons<T, U> {
+    type Hd = T;
+    type Tl = U;
+
+    // fn is_empty(&self) -> bool {
+    //     false
+    // }
+
+    fn hd(&self) -> Self::Hd {
+        self.hd
+    }
+
+    fn hd_is_elem(&self) -> IsElem<Self::Hd> {
+        self.is_elem.clone()
+    }
+
+    // fn tl(&self) -> Self::Tl {
+    //     self.tl.clone()
+    // }
+
+    // fn cons<W: Trait<T>>(&self, x: W) -> Cons<T, W, Self> {
+    //     Cons {
+    //         t: PhantomData,
+    //         hd: x,
+    //         tl: (*self).clone(),
+    //     }
+    // }
+
+}
+
+// pub fn demo_triple() -> Cons<(), TBool, Cons<(), TUnit, Cons<(), TBool, Nil<()>>>> {
+//     Nil { t: PhantomData }
+//     .cons(TBool { get_bool: true })
+//     .cons(TUnit { })
+//     .cons(TBool { get_bool: false })
 // }
 
-// #[derive(Clone, Debug, PartialOrd, Ord, Serialize, Deserialize)]
-// #[derive(PartialEq, Eq)]
-// pub enum SymbolList {
-//     Nil,
-//     Cons(Symbol, Box<SymbolList>),
+// pub fn demo_triple_with_tl_handles_intermediate_types() -> Cons<(), TBool, Cons<(), TUnit, Cons<(), TBool, Nil<()>>>> {
+//     Nil { t: PhantomData }
+//     .cons(TBool { get_bool: true })
+//     .cons(TUnit { })
+//     .cons(TBool { get_bool: false })
+//     .cons(TBool { get_bool: true })
+//     .cons(TUnit { })
+//     .tl()
+//     .tl()
 // }
-
-
-// trait Elaborates<const N: usize, const T: SymbolList> {
-//     // type Elab;
-
-//     // fn elaborate(x: &Self::Elab) -> Elem;
-//     // fn elaborate_match(x: &Elem) -> Option<Self::Elab>;
-// }
-
-
-// pub enum Instr<const ARGS: Vec<EnumSet<ElemSymbol>>, const RET: EnumSet<ElemSymbol>> {
-//     Func(Box(dyn Fn(
-
-
 

@@ -1,4 +1,5 @@
 use cryptoscript::{parse_json, Elem, ElemSymbol, Executor, Instruction, Instructions, Restack};
+// use cryptoscript::{demo_triple, demo_triple_with_tl_handles_intermediate_types, HList};
 
 #[cfg(test)]
 mod tests {
@@ -215,8 +216,17 @@ fn main() {
     // println!("{:?}", exec);
     println!("");
 
-    match instructions.type_of() {
-        Ok(r) => println!("\nfinal type:\n{}", r),
-        Err(e) => println!("{}", e),
-    }
+    // match instructions.type_of() {
+    //     Ok(r) => println!("\nfinal type:\n{}", r),
+    //     Err(e) => println!("{}", e),
+    // }
+
+    // println!("");
+    // println!("demo_triple:");
+    // demo_triple().fold((), |_memo, x| println!("{:?}", x));
+
+    // println!("");
+    // println!("demo_triple_with_tl_handles_intermediate_types:");
+    // demo_triple_with_tl_handles_intermediate_types().fold((), |_memo, x| println!("{:?}", x));
+
 }
