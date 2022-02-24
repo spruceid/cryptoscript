@@ -7,8 +7,8 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 // use std::alloc::string;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
-use dyn_clone::DynClone;
 use enumset::{EnumSet, enum_set};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -272,6 +272,7 @@ pub struct Context {
     context: BTreeMap<TypeId, ElemType>,
     next_type_id: TypeId,
 }
+
 
 // Formatting:
 // ```
@@ -1232,7 +1233,7 @@ impl TypeName for TUnit {
 }
 
 
-pub trait Teq<T>: DynClone {
+pub trait Teq<T> {
     type Other;
 
     fn transport(&self, x: T) -> Self::Other;
@@ -1246,12 +1247,10 @@ impl<T, U: Clone> Teq<T> for U {
     }
 }
 
-// dyn_clone::clone_trait_object!(Teq);
-
-// #[derive(Clone)]
+#[derive(Clone)]
 pub struct TEq<T, U>
 {
-    teq: Box<dyn Teq<T, Other = U>>,
+    teq: Arc<dyn Teq<T, Other = U>>,
 }
 
 impl<T, U> PartialEq for TEq<T, U> {
@@ -1278,7 +1277,7 @@ impl<T, U> TEq<T, U> {
 impl<T> TEq<T, T> {
     pub fn refl(_x: PhantomData<T>) -> Self {
         TEq {
-            teq: Box::new(()),
+            teq: Arc::new(()),
         }
     }
 }
@@ -1288,17 +1287,6 @@ impl<T: TypeName, U: TypeName> fmt::Debug for TEq<T, U> {
         write!(f, "Teq {{ teq: Teq<{0}, {1}> }}", TypeName::type_name(PhantomData::<T>), TypeName::type_name(PhantomData::<T>))
     }
 }
-
-impl<T, U> Clone for TEq<T, U> {
-    fn clone(&self) -> Self {
-        TEq {
-            teq: dyn_clone::clone_box(&*self.teq),
-        }
-
-        // self.compose(TEq::refl(PhantomData::<U>))
-    }
-}
-
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum IsElem<T> {
@@ -1488,6 +1476,8 @@ impl<T: Copy, U: HList> HList for Cons<T, U> {
     // }
 
 }
+
+
 
 // pub fn demo_triple() -> Cons<(), TBool, Cons<(), TUnit, Cons<(), TBool, Nil<()>>>> {
 //     Nil { t: PhantomData }
