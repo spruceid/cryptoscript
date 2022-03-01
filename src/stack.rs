@@ -40,7 +40,7 @@ impl Stack {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum StackError {
     #[error("Stack::pop: tried to pop from an empty stack")]
     EmptyStack,
@@ -58,6 +58,9 @@ pub enum StackError {
         error: String,
         line_no: LineNo,
     },
+
+    #[error("Stack::pop_generic_array: unimplemented")]
+    TODO,
 }
 
 // TODO: relocate LineNo, ArgumentIndex, Location
