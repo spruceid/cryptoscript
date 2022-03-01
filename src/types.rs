@@ -1,8 +1,11 @@
-use crate::restack::{Restack, RestackError};
+// use crate::restack::{RestackError};
 use crate::elem::{Elem, ElemSymbol};
+use crate::stack::{Stack, StackError, LineNo, Location};
 
 use std::collections::BTreeMap;
 use std::cmp;
+use std::iter::{FromIterator};
+
 use std::fmt;
 use std::fmt::{Display, Formatter};
 // use std::alloc::string;
@@ -11,7 +14,975 @@ use std::sync::Arc;
 
 use enumset::{EnumSet, enum_set};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Number, Value};
 use thiserror::Error;
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Empty {}
+
+impl Empty {
+    fn absurd<T>(&self, _p: PhantomData<T>) -> T {
+        match *self {}
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Nil { }
+
+impl Iterator for Nil {
+    type Item = Elem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+
+
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TUnit {}
+
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TBool {
+//     get_bool: bool,
+// }
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TNumber {
+//     number: serde_json::Number,
+// }
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TBytes {
+//     bytes: Vec<u8>,
+// }
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TString {
+//     string: String,
+// }
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TArray {
+//     array: Vec<serde_json::Value>,
+// }
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TObject {
+//     object: serde_json::Map<String, serde_json::Value>,
+// }
+
+// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// pub struct TJson {
+//     json: serde_json::Value,
+// }
+
+// Deriving a string from the type without any values allows debugging TEq
+pub trait TypeName {
+    fn type_name(x: PhantomData<Self>) -> &'static str;
+}
+
+impl TypeName for () { // TUnit
+    fn type_name(_: PhantomData<Self>) -> &'static str {
+        "Unit"
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pub trait Teq<T> {
+    type Other;
+
+    fn transport(&self, x: T) -> Self::Other;
+    fn transport_sym(&self, x: Self::Other) -> T;
+}
+
+impl<T, U: Clone> Teq<T> for U {
+    type Other = T;
+
+    fn transport(&self, x: T) -> Self::Other {
+        x
+    }
+
+    fn transport_sym(&self, x: Self::Other) -> T {
+        x
+    }
+}
+
+#[derive(Clone)]
+pub struct TEq<T: Sized, U: Sized>
+{
+    teq: Arc<dyn Teq<T, Other = U>>,
+}
+
+impl<T: Sized, U: Sized> PartialEq for TEq<T, U> {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl<T: Sized, U: Sized> Eq for TEq<T, U> {}
+
+impl<T: Sized> TEq<T, T> {
+    pub fn refl(_x: PhantomData<T>) -> Self {
+        TEq {
+            teq: Arc::new(()),
+        }
+    }
+}
+
+impl<T: Sized, U: Sized> TEq<T, U> {
+    pub fn transport(&self, x: T) -> U {
+        (*self.teq).transport(x)
+    }
+
+    pub fn transport_sym(&self, x: U) -> T {
+        (*self.teq).transport_sym(x)
+    }
+}
+
+impl<T: TypeName + Sized, U: TypeName + Sized> fmt::Debug for TEq<T, U> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f,
+               "Teq {{ teq: Teq<{0}, {1}> }}",
+               TypeName::type_name(PhantomData::<T>),
+               TypeName::type_name(PhantomData::<T>))
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum IsElem<T: Sized> {
+    Unit(TEq<T, ()>),
+    Bool(TEq<T, bool>),
+    Number(TEq<T, Number>),
+    Bytes(TEq<T, Vec<u8>>),
+    String(TEq<T, String>),
+    Array(TEq<T, Vec<Value>>),
+    Object(TEq<T, Map<String, Value>>),
+    Json(TEq<T, Value>),
+}
+
+impl<T: TypeName> fmt::Debug for IsElem<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "IsElem {}", TypeName::type_name(PhantomData::<T>))
+    }
+}
+
+// impl<T: TypeName, U: TypeName> fmt::Debug for TEq<T, U> {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+//         write!(f, "Teq {{ teq: Teq<{0}, {1}> }}", TypeName::type_name(PhantomData<T>), TypeName::type_name(PhantomData<T>))
+//     }
+// }
+
+
+
+
+
+pub trait AnElem: Clone + std::fmt::Debug {
+    fn is_elem(x: PhantomData<Self>) -> IsElem<Self> where Self: Sized;
+}
+
+// impl AnElem for Elem {
+
+
+impl AnElem for () {
+    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
+        IsElem::Unit(TEq::refl(PhantomData))
+    }
+}
+
+impl AnElem for bool {
+    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
+        IsElem::Bool(TEq::refl(PhantomData))
+    }
+}
+
+impl AnElem for Vec<u8> {
+    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
+        IsElem::Bytes(TEq::refl(PhantomData))
+    }
+}
+
+impl AnElem for String {
+    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
+        IsElem::String(TEq::refl(PhantomData))
+    }
+}
+
+impl AnElem for Value {
+    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
+        IsElem::Json(TEq::refl(PhantomData))
+    }
+}
+
+impl AnElem for Map<String, Value> {
+    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
+        IsElem::Object(TEq::refl(PhantomData))
+    }
+}
+
+impl<T> IsElem<T> {
+    pub fn elem_symbol(&self) -> ElemSymbol {
+        match self {
+            Self::Unit(_) => ElemSymbol::Unit,
+            Self::Bool(_) => ElemSymbol::Bool,
+            Self::Number(_) => ElemSymbol::Number,
+            Self::Bytes(_) => ElemSymbol::Bytes,
+            Self::String(_) => ElemSymbol::String,
+            Self::Array(_) => ElemSymbol::Array,
+            Self::Object(_) => ElemSymbol::Object,
+            Self::Json(_) => ElemSymbol::Json,
+        }
+    }
+
+    pub fn to_elem(&self, x: T) -> Elem {
+        match self {
+            Self::Unit(_) => Elem::Unit,
+            Self::Bool(eq) => Elem::Bool(eq.transport(x)),
+            Self::Number(eq) => Elem::Number(eq.transport(x)),
+            Self::Bytes(eq) => Elem::Bytes(eq.transport(x)),
+            Self::String(eq) => Elem::String(eq.transport(x)),
+            Self::Array(eq) => Elem::Array(eq.transport(x)),
+            Self::Object(eq) => Elem::Object(eq.transport(x)),
+            Self::Json(eq) => Elem::Json(eq.transport(x)),
+        }
+    }
+
+    // TODO: from_elem
+    fn from_elem(self, x: Elem) -> Option<T> {
+        match (self, x) {
+            (Self::Unit(eq), Elem::Unit) => Some(eq.transport_sym(())),
+            (Self::Bool(eq), Elem::Bool(x)) => Some(eq.transport_sym(x)),
+            // (Self::Number(eq), Elem::Number(x)) => Some(eq.transport_sym(x)),
+            // (Self::Bytes(eq), Elem::Bytes(x)) => Some(eq.transport_sym(x)),
+            // (Self::String(eq), Elem::String(x)) => Some(eq.transport_sym(x)),
+            // (Self::Array(eq), Elem::Array(x)) => Some(eq.transport_sym(x)),
+            // (Self::Object(eq), Elem::Object(x)) => Some(eq.transport_sym(x)),
+            // (Self::Json(eq), Elem::Json(x)) => Some(eq.transport_sym(x)),
+            _ => None,
+        }
+    }
+}
+
+
+
+pub trait ElemList: Clone + IntoIterator<Item = Elem> {
+    type Hd: AnElem;
+    type Tl: ElemList;
+
+    fn is_empty(&self) -> bool;
+    fn hd(&self) -> Self::Hd;
+    fn tl(&self) -> Self::Tl;
+    fn cons<T: AnElem>(self, x: T) -> ConsElem<T, Self> where Self: Sized;
+    fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
+}
+
+impl ElemList for Nil {
+    type Hd = ();
+    type Tl = Nil;
+
+    fn is_empty(&self) -> bool {
+        true
+    }
+
+    fn hd(&self) -> Self::Hd {
+        ()
+    }
+
+    fn tl(&self) -> Self::Tl {
+        Self {}
+    }
+
+    fn cons<T: AnElem>(self, x: T) -> ConsElem<T, Self>
+    where
+        Self: Sized,
+    {
+        ConsElem {
+            hd: x,
+            tl: self,
+        }
+    }
+
+    fn pop(_x: PhantomData<Self>, _stack: &mut Stack) -> Result<Self, StackError> {
+        Ok(Nil {})
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ConsElem<T: AnElem, U: ElemList> {
+    hd: T,
+    tl: U,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct IterConsElem<T: AnElem, U: ElemList> {
+    cons: ConsElem<T, U>,
+    at_head: bool,
+}
+
+impl<T: AnElem, U: ElemList> IntoIterator for ConsElem<T, U> {
+    type Item = Elem;
+    type IntoIter = IterConsElem<T, U>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IterConsElem {
+            cons: self,
+            at_head: true,
+        }
+    }
+}
+
+impl<T: AnElem, U: ElemList> Iterator for IterConsElem<T, U> {
+    type Item = Elem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.at_head {
+            Some(AnElem::is_elem(PhantomData::<T>).to_elem(self.cons.hd.clone()))
+        } else {
+            let self_cons = self.cons.clone();
+            *self = self_cons.into_iter();
+            self.next()
+        }
+    }
+}
+
+impl<T: AnElem, U: ElemList> ElemList for ConsElem<T, U> {
+    type Hd = T;
+    type Tl = U;
+
+    fn is_empty(&self) -> bool {
+        false
+    }
+
+    fn hd(&self) -> Self::Hd {
+        self.hd.clone()
+    }
+
+    fn tl(&self) -> Self::Tl {
+        self.tl.clone()
+    }
+
+    fn cons<V: AnElem>(self, x: V) -> ConsElem<V, Self>
+    where
+        Self: Sized,
+    {
+        ConsElem {
+            hd: x,
+            tl: self,
+        }
+    }
+
+    // TODO: add better errors
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError> {
+        let hd_elem = stack.pop()?;
+        Ok(ConsElem {
+            hd: AnElem::is_elem(PhantomData::<Self::Hd>).from_elem(hd_elem.clone()).ok_or_else(|| StackError::UnexpectedElemType {
+                expected: AnElem::is_elem(PhantomData::<Self::Hd>).elem_symbol(),
+                found: hd_elem.clone(),
+                stack: stack.clone(),
+            })?,
+            tl: Self::Tl::pop(PhantomData, stack)?,
+        })
+    }
+}
+
+
+pub trait FromElemList {
+    type AsElemList: ElemList;
+    fn to_hlist_type(x: PhantomData<Self>) -> PhantomData<Self::AsElemList>;
+    // fn to_hlist(&self) -> Self::AsElemList;
+    fn from_hlist(t: PhantomData<Self>, x: Self::AsElemList) -> Self;
+}
+
+impl FromElemList for () {
+    type AsElemList = Nil;
+    fn to_hlist_type(_x: PhantomData<Self>) -> PhantomData<Self::AsElemList> { PhantomData }
+    fn from_hlist(_t: PhantomData<Self>, _x: Self::AsElemList) -> Self { () }
+}
+
+impl<T, U> FromElemList for (T, U)
+where
+    T: AnElem,
+    U: AnElem,
+{
+    type AsElemList = ConsElem<T, ConsElem<U, Nil>>;
+    fn to_hlist_type(_x: PhantomData<Self>) -> PhantomData<Self::AsElemList> { PhantomData }
+    // fn to_hlist(&self) -> Self::AsElemList {
+    //     Nil.cons(self.0).cons(self.1)
+    // }
+
+    fn from_hlist(_t: PhantomData<Self>, x: Self::AsElemList) -> Self {
+        (x.hd(), x.tl().hd())
+    }
+}
+
+impl<T, U> FromElemList for ConsElem<T, U>
+where
+    T: AnElem,
+    U: ElemList,
+{
+    type AsElemList = Self;
+    fn to_hlist_type(_x: PhantomData<Self>) -> PhantomData<Self::AsElemList> { PhantomData }
+    // fn to_hlist(&self) -> Self::AsElemList {
+    //     Nil.cons(self.0).cons(self.1)
+    // }
+
+    fn from_hlist(_t: PhantomData<Self>, x: Self::AsElemList) -> Self { x }
+}
+
+
+
+// TODO: add necessary traits, methods and rename to IsInstructionError or IsInstrError
+pub trait AnError: std::fmt::Debug {
+    // fn to_stack_error(&self, line_no: LineNo) -> StackError;
+}
+
+impl StackError {
+    fn instruction_default(name: &str, error_str: &str, line_no: LineNo) -> Self {
+        Self::RunInstruction {
+            name: name.to_string(),
+            error: error_str.to_string(),
+            line_no: line_no,
+        }
+    }
+}
+
+impl AnError for Empty {
+    // fn to_stack_error(&self, _line_no: LineNo) -> StackError {
+    //     self.absurd(PhantomData)
+    // }
+}
+
+// TODO: add Default, etc
+pub trait IsInstruction: std::fmt::Debug {
+    type In: FromElemList;
+    type Out: AnElem;
+    type Error: AnError;
+
+    fn run(&self, x: Self::In) -> Result<Self::Out, Self::Error>;
+}
+
+impl Stack {
+    fn run_instruction<T: IsInstruction>(&mut self, instr: T, line_no: LineNo) -> Result<(), StackError> {
+        let input = ElemList::pop(FromElemList::to_hlist_type(PhantomData::<T::In>), self)?;
+        let output = instr.run(FromElemList::from_hlist(PhantomData::<T::In>, input)).map_err(|e| StackError::RunInstruction {
+            name: format!("{:?}", instr),
+            error: format!("{:?}", e),
+            line_no: line_no})?;
+        Ok(self.push(AnElem::is_elem(PhantomData::<T::Out>).to_elem(output)))
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AssertTrue {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AssertTrueError {}
+impl AnError for AssertTrueError {}
+
+impl IsInstruction for AssertTrue {
+    type In = ConsElem<bool, Nil>;
+    type Out = bool;
+    type Error = AssertTrueError;
+
+    fn run(&self, x: Self::In) -> Result<Self::Out, Self::Error> {
+        if x.hd() {
+            Ok(x.hd())
+        } else {
+            Err(AssertTrueError {})
+        }
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Push<T: AnElem> {
+    push: T,
+}
+
+impl<T: AnElem> IsInstruction for Push<T> {
+    type In = ();
+    type Out = T;
+    type Error = Empty;
+
+    fn run(&self, _x: Self::In) -> Result<Self::Out, Self::Error> {
+        Ok(self.push.clone())
+    }
+}
+
+
+
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HashSha256 {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HashSha256Error {}
+impl AnError for HashSha256Error {}
+
+impl IsInstruction for HashSha256 {
+    type In = ConsElem<Vec<u8>, Nil>;
+    type Out = Vec<u8>;
+    type Error = Empty;
+
+    fn run(&self, x: Self::In) -> Result<Self::Out, Self::Error> {
+        Ok(super::sha256(&x.hd()))
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Concat<T: AnElem> {
+    t: PhantomData<T>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ConcatError {}
+impl AnError for ConcatError {}
+
+impl<T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>> IsInstruction for Concat<T> {
+    type In = (T, T);
+    type Out = T;
+    type Error = Empty;
+
+    fn run(&self, x: Self::In) -> Result<Self::Out, Self::Error> {
+        let (lhs, rhs) = x;
+        Ok(lhs.into_iter().chain(rhs.into_iter()).collect())
+    }
+}
+
+    // pub fn concat(self, other: Self) -> Result<Self, ElemError> {
+    //     match (self, other) {
+    //         (Self::Bytes(x), Self::Bytes(y)) => Ok(Self::Bytes(Self::concat_generic(x, y))),
+    //         (Self::String(x), Self::String(y)) => {
+    //             Ok(Self::String(String::from_utf8(Self::concat_generic(Vec::from(x.clone()), Vec::from(y.clone())))
+    //                             .map_err(|_| ElemError::ConcatInvalidUTF8 { lhs: x, rhs: y })?))
+    //         },
+    //         (Self::Array(x), Self::Array(y)) => Ok(Self::Array(Self::concat_generic(x, y))),
+    //         (Self::Object(x), Self::Object(y)) => Ok(Self::Object(Self::concat_generic(x, y))),
+    //         (some_x, some_y) => {
+    //             Err(ElemError::ConcatUnsupportedTypes {
+    //                 lhs: some_x.symbol_str(),
+    //                 rhs: some_y.symbol_str()
+    //             })
+    //         },
+    //     }
+    // }
+
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Slice {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SliceError {}
+impl AnError for SliceError {}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Index {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct IndexError {}
+impl AnError for IndexError {}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Lookup {}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LookupError {
+    key: String,
+    map: Map<String, Value>,
+}
+impl AnError for LookupError {}
+
+impl IsInstruction for Lookup {
+    type In = (String, Map<String, Value>);
+    type Out = Value;
+    type Error = LookupError;
+
+    fn run(&self, x: Self::In) -> Result<Self::Out, Self::Error> {
+        let (key, map) = x;
+        Ok(map.get(&key)
+           .ok_or_else(|| LookupError {
+               key: key,
+               map: map.clone(),
+           })?.clone())
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct UnpackJson<T: AnElem> {
+    t: PhantomData<T>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct UnpackJsonError {}
+impl AnError for UnpackJsonError {}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StringToBytes {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StringToBytesError {}
+impl AnError for StringToBytesError {}
+
+
+
+// TODO: POLYMORPHIC W/ ANY: PERHAPS Elem: AnElem ??
+//
+// ideas:
+// 1. use macros when it's a trait
+// 2. gradual typing: allow Elem to be AnElem
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckLe {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckLeError {}
+impl AnError for CheckLeError {}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckLt {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckLtError {}
+impl AnError for CheckLtError {}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckEq {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckEqError {}
+impl AnError for CheckEqError {}
+
+
+
+
+
+    // pub fn check_le(self, other: Self) -> Result<Self, ElemError> {
+    //     let result = match self.partial_cmp(&other)
+    //         .ok_or_else(|| ElemError::CheckLeIncomparableTypes {
+    //             lhs: self.symbol_str(),
+    //             rhs: other.symbol_str() })? {
+    //                 cmp::Ordering::Less => true,
+    //                 cmp::Ordering::Equal => true,
+    //                 cmp::Ordering::Greater => false,
+    //     };
+    //     Ok(Self::Bool(result))
+    // }
+
+    // pub fn check_lt(self, other: Self) -> Result<Self, ElemError> {
+    //     let result = match self.partial_cmp(&other)
+    //         .ok_or_else(|| ElemError::CheckLtIncomparableTypes {
+    //             lhs: self.symbol_str(),
+    //             rhs: other.symbol_str() })? {
+    //                 cmp::Ordering::Less => true,
+    //                 _ => false,
+    //     };
+    //     Ok(Self::Bool(result))
+    // }
+
+    // pub fn check_eq(self, other: Self) -> Result<Self, ElemError> {
+    //     let result = match self.partial_cmp(&other)
+    //         .ok_or_else(|| ElemError::CheckEqIncomparableTypes {
+    //             lhs: self.symbol_str(),
+    //             rhs: other.symbol_str() })? {
+    //                 cmp::Ordering::Equal => true,
+    //                 _ => false,
+    //     };
+    //     Ok(Self::Bool(result))
+    // }
+
+    // fn slice_generic<T: Clone + IntoIterator +
+    //   std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(offset: Number,
+    //                                                                  length: Number,
+    //                                                                  iterable: T,
+    //                                                                  elem_symbol: ElemSymbol) ->
+    //     Result<T, ElemError> {
+    //     let u_offset = offset.as_u64()
+    //         .ok_or_else(|| ElemError::SliceOffsetNotU64(offset.clone()))
+    //         .and_then(|x| usize::try_from(x).map_err(|_| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() }))?;
+    //     let u_length = length.as_u64()
+    //         .ok_or_else(|| ElemError::SliceLengthNotU64(length.clone()))
+    //         .and_then(|x| usize::try_from(x).map_err(|_| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() }))?;
+    //     let u_offset_plus_length = u_offset.checked_add(u_length)
+    //         .ok_or_else(|| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() })?;
+    //     if iterable.clone().into_iter().count() < u_offset_plus_length {
+    //         Err(ElemError::SliceTooShort {
+    //             offset: u_offset,
+    //             length: u_length,
+    //             iterable: From::from(elem_symbol),
+    //         })
+    //     } else {
+    //         Ok(iterable.into_iter().skip(u_offset).take(u_length).collect())
+    //     }
+    // }
+
+    // pub fn slice(maybe_offset: Self, maybe_length: Self, maybe_iterable: Self) -> Result<Self, ElemError> {
+    //     match (maybe_offset, maybe_length, maybe_iterable) {
+    //         (Self::Number(offset), Self::Number(length), Self::Bytes(iterator)) =>
+    //             Ok(Self::Bytes(Self::slice_generic(offset, length, iterator, ElemSymbol::Bytes)?)),
+    //         (Self::Number(offset), Self::Number(length), Self::String(iterator)) => {
+    //             let iterator_vec = Vec::from(iterator.clone());
+    //             Ok(Self::String(String::from_utf8(Self::slice_generic(offset.clone(), length.clone(), iterator_vec, ElemSymbol::String)?)
+    //                     .map_err(|_| ElemError::SliceInvalidUTF8 { offset: offset, length: length, iterator: iterator })?))
+    //             },
+    //         (Self::Number(offset), Self::Number(length), Self::Array(iterator)) =>
+    //             Ok(Self::Array(Self::slice_generic(offset, length, iterator, ElemSymbol::Number)?)),
+    //         (Self::Number(offset), Self::Number(length), Self::Object(iterator)) =>
+    //             Ok(Self::Object(Self::slice_generic(offset, length, iterator, ElemSymbol::Object)?)),
+    //         (maybe_not_offset, maybe_not_length, maybe_not_iterable) => {
+    //             Err(ElemError::SliceUnsupportedTypes {
+    //                 maybe_not_offset: maybe_not_offset.symbol_str(),
+    //                 maybe_not_length: maybe_not_length.symbol_str(),
+    //                 maybe_not_iterable: maybe_not_iterable.symbol_str(),
+    //             })
+    //         }
+    //     }
+    // }
+
+    // fn index_generic<T: Clone + IntoIterator +
+    //     std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(index: Number,
+    //                                                                    iterable: T,
+    //                                                                    elem_symbol: ElemSymbol) ->
+    //   Result<<T as std::iter::IntoIterator>::Item, ElemError> {
+    //     let u_index: usize = index.as_u64()
+    //         .ok_or_else(|| ElemError::IndexNotU64(index.clone()))
+    //         .and_then(|x| usize::try_from(x).map_err(|_| ElemError::IndexOverflow(index.clone())))?;
+    //     if iterable.clone().into_iter().count() <= u_index {
+    //         return Err(ElemError::IndexTooShort {
+    //             index: u_index,
+    //             iterable: From::from(elem_symbol),
+    //         })
+    //     } else {
+    //         match iterable.into_iter().skip(u_index).next() {
+    //             None => Err(ElemError::IndexTooShort { index: u_index, iterable: From::from(elem_symbol) }),
+    //             Some(x) => Ok(x),
+    //         }
+    //     }
+    // }
+
+    // pub fn index(self, maybe_iterable: Self) -> Result<Self, ElemError> {
+    //     match (self, maybe_iterable) {
+    //         // (Self::Number(index), Self::Bytes(iterator)) =>
+    //         //     Ok(Self::Bytes(vec![Self::index_generic(index, iterator, ElemSymbol::Bytes)?])),
+    //         (Self::Number(index), Self::Array(iterator)) =>
+    //             Ok(Self::Json(Self::index_generic(index, iterator, ElemSymbol::Json)?)),
+    //         (Self::Number(index), Self::Object(iterator)) =>
+    //             Ok(Self::Json(Self::index_generic(index, iterator, ElemSymbol::Object)?.1)),
+    //         (maybe_not_index, maybe_not_iterable) => {
+    //             Err(ElemError::IndexUnsupportedTypes {
+    //                 maybe_not_index: maybe_not_index.symbol_str(),
+    //                 maybe_not_iterable: maybe_not_iterable.symbol_str(),
+    //             })
+    //         }
+    //     }
+    // }
+
+    // pub fn to_json(self) -> Result<Self, ElemError> {
+    //     Ok(Self::Json(serde_json::to_value(self)?))
+    // }
+
+    // pub fn unpack_json(self, elem_symbol: ElemSymbol) -> Result<Self, ElemError> {
+    //     match (self, elem_symbol) {
+    //         (Self::Json(serde_json::Value::Null), ElemSymbol::Unit) => Ok(Self::Unit),
+    //         (Self::Json(serde_json::Value::Bool(x)), ElemSymbol::Bool) => Ok(Self::Bool(x)),
+    //         (Self::Json(serde_json::Value::Number(x)), ElemSymbol::Number) => Ok(Self::Number(x)),
+    //         (Self::Json(serde_json::Value::String(x)), ElemSymbol::String) => Ok(Self::String(x)),
+    //         (Self::Json(serde_json::Value::Array(x)), ElemSymbol::Array) => Ok(Self::Array(x)),
+    //         (Self::Json(serde_json::Value::Object(x)), ElemSymbol::Object) => Ok(Self::Object(x)),
+    //         (Self::Json(json), elem_symbol) => Err(ElemError::UnpackJsonUnsupportedSymbol {
+    //           json: json,
+    //           elem_symbol: From::from(elem_symbol),
+    //         }),
+    //         (non_json, _) => Err(ElemError::UnpackJsonUnexpectedType {
+    //               non_json: non_json.symbol_str(),
+    //               elem_symbol: From::from(elem_symbol),
+    //         }),
+    //     }
+    // }
+
+    // pub fn string_to_bytes(self) -> Result<Self, ElemError> {
+    //     match self {
+    //         Self::String(x) => Ok(Self::Bytes(x.into_bytes())),
+    //         other => Err(ElemError::StringToBytesUnsupportedType(other.symbol_str())),
+    //     }
+    // }
+
+
+
+
+
+
+//     ToJson,
+//     Restack(Restack),
+
+// #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+// pub enum Instruction {
+//     Push(Elem),
+//     Restack(Restack),
+//     HashSha256,
+//     CheckLe,
+//     CheckLt,
+//     CheckEq,
+//     Concat,
+//     Slice,
+//     Index,
+//     Lookup,
+//     AssertTrue,
+//     ToJson,
+//     UnpackJson(ElemSymbol),
+//     StringToBytes,
+// }
+
+
+
+// pub fn demo_triple() -> ConsElem<(), TBool, ConsElem<(), TUnit, ConsElem<(), TBool, Nil<()>>>> {
+//     Nil { t: PhantomData }
+//     .cons(TBool { get_bool: true })
+//     .cons(TUnit { })
+//     .cons(TBool { get_bool: false })
+// }
+
+// pub fn demo_triple_with_tl_handles_intermediate_types() -> ConsElem<(), TBool, ConsElem<(), TUnit, ConsElem<(), TBool, Nil<()>>>> {
+//     Nil { t: PhantomData }
+//     .cons(TBool { get_bool: true })
+//     .cons(TUnit { })
+//     .cons(TBool { get_bool: false })
+//     .cons(TBool { get_bool: true })
+//     .cons(TUnit { })
+//     .tl()
+//     .tl()
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////////////////
+//////////////////////////////
+////////////////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////////////////
+////////////////////////
+//////////////////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+////////////
+//////////////////
+////////////
+//////
+////////////
+//////
+
 
 // typing:
 // - unification
@@ -20,64 +991,6 @@ use thiserror::Error;
 // - two categories of tests:
 //   + property tests for typing methods themselves
 //   + test that a function having a particular type -> it runs w/o type errors on such inputs
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
-pub enum Instruction {
-    Push(Elem),
-    Restack(Restack),
-    HashSha256,
-    CheckLe,
-    CheckLt,
-    CheckEq,
-    Concat,
-    Slice,
-    Index,
-    Lookup,
-    AssertTrue,
-    ToJson,
-    UnpackJson(ElemSymbol),
-    StringToBytes,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct LineNo {
-    line_no: usize,
-}
-
-impl From<usize> for LineNo {
-    fn from(line_no: usize) -> Self {
-        LineNo {
-            line_no: line_no,
-        }
-    }
-}
-
-pub type ArgumentIndex = usize;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Location {
-    line_no: LineNo,
-    argument_index: ArgumentIndex,
-    is_input: bool,
-}
-
-impl LineNo {
-    pub fn in_at(&self, argument_index: usize) -> Location {
-        Location {
-            line_no: *self,
-            argument_index: argument_index,
-            is_input: true,
-        }
-    }
-
-    pub fn out_at(&self, argument_index: usize) -> Location {
-        Location {
-            line_no: *self,
-            argument_index: argument_index,
-            is_input: false,
-        }
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum BaseElemType {
@@ -480,9 +1393,9 @@ impl Context {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Type {
-    context: Context,
-    i_type: Vec<TypeId>,
-    o_type: Vec<TypeId>,
+    pub context: Context,
+    pub i_type: Vec<TypeId>,
+    pub o_type: Vec<TypeId>,
 }
 
 impl Type {
@@ -683,195 +1596,6 @@ mod type_display_tests {
 
 
 
-impl Restack {
-    // TODO: fix locations: out locations are mislabeled as in locations
-    pub fn type_of(&self, line_no: LineNo) -> Result<Type, RestackError> {
-        let mut context = Context::new();
-        let mut restack_type: Vec<TypeId> = (0..self.restack_depth)
-            .map(|x| context.push(ElemType::any(vec![line_no.in_at(x)])))
-            .collect();
-        Ok(Type {
-            context: context,
-            i_type: restack_type.clone(),
-            o_type: self.run(&mut restack_type)?,
-        })
-    }
-}
-
-/// Push(Elem),             // (t: type, elem: type(t)) : [] -> [ t ]
-/// Restack(Restack),       // (r: restack) : [ .. ] -> [ .. ]
-/// HashSha256,             // : [ bytes ] -> [ bytes ]
-/// CheckLe,                // : [ x, x ] -> [ bool ]
-/// CheckLt,                // : [ x, x ] -> [ bool ]
-/// CheckEq,                // : [ x, x ] -> [ bool ]
-/// Concat,                 // (t: type, prf: is_concat(t)) : [ t, t ] -> [ t ]
-/// Slice,                  // (t: type, prf: is_slice(t)) : [ int, int, t ] -> [ t ]
-/// Index,                  // (t: type, prf: is_index(t)) : [ int, t ] -> [ json ]
-/// Lookup,                 // [ string, object ] -> [ json ]
-/// AssertTrue,             // [ bool ] -> []
-/// ToJson,                 // (t: type) : [ t ] -> [ json ]
-/// UnpackJson(ElemSymbol), // (t: type) : [ json ] -> [ t ]
-/// StringToBytes,          // [ string ] -> [ bytes ]
-impl Instruction {
-    pub fn type_of(&self, line_no: LineNo) -> Result<Type, TypeError> {
-        match self {
-            Instruction::Restack(restack) =>
-                Ok(restack
-                   .type_of(line_no)
-                   .or_else(|e| Err(TypeError::InstructionTypeOfRestack(e)))?),
-
-            Instruction::AssertTrue => {
-                let mut context = Context::new();
-                let bool_var = context
-                    .push(ElemSymbol::Bool
-                          .elem_type(vec![line_no.in_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![bool_var],
-                    o_type: vec![],
-                })
-            },
-
-            Instruction::Push(elem) => {
-                let mut context = Context::new();
-                let elem_var = context
-                    .push(elem.elem_type(vec![line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![],
-                    o_type: vec![elem_var],
-                })
-            },
-
-            Instruction::HashSha256 => {
-                let mut context = Context::new();
-                let bytes_var = context.push(ElemSymbol::Bytes.elem_type(vec![line_no.in_at(0), line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![bytes_var],
-                    o_type: vec![bytes_var],
-                })
-            },
-
-            Instruction::ToJson => {
-                let mut context = Context::new();
-                let any_var = context.push(ElemType::any(vec![line_no.in_at(0)]));
-                let json_var = context.push(ElemSymbol::Json.elem_type(vec![line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![any_var],
-                    o_type: vec![json_var],
-                })
-            },
-
-            Instruction::StringToBytes => {
-                let mut context = Context::new();
-                let string_var = context.push(ElemSymbol::String.elem_type(vec![line_no.in_at(0)]));
-                let bytes_var = context.push(ElemSymbol::Bytes.elem_type(vec![line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![string_var],
-                    o_type: vec![bytes_var],
-                })
-            },
-
-            Instruction::UnpackJson(elem_symbol) => {
-                let mut context = Context::new();
-                let json_var = context.push(ElemSymbol::Json.elem_type(vec![line_no.in_at(0)]));
-                let elem_symbol_var = context.push(elem_symbol.elem_type(vec![line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![json_var],
-                    o_type: vec![elem_symbol_var],
-                })
-            },
-
-            Instruction::CheckLe => {
-                let mut context = Context::new();
-                let any_lhs_var = context.push(ElemType::any(vec![line_no.in_at(0)]));
-                let any_rhs_var = context.push(ElemType::any(vec![line_no.in_at(1)]));
-                let bool_var = context.push(ElemSymbol::Bool.elem_type(vec![line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![any_lhs_var, any_rhs_var],
-                    o_type: vec![bool_var],
-                })
-            },
-
-            Instruction::CheckLt => {
-                let mut context = Context::new();
-                let any_lhs_var = context.push(ElemType::any(vec![line_no.in_at(0)]));
-                let any_rhs_var = context.push(ElemType::any(vec![line_no.in_at(1)]));
-                let bool_var = context.push(ElemSymbol::Bool.elem_type(vec![line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![any_lhs_var, any_rhs_var],
-                    o_type: vec![bool_var],
-                })
-            },
-
-            Instruction::CheckEq => {
-                let mut context = Context::new();
-                let any_lhs_var = context.push(ElemType::any(vec![line_no.in_at(0)]));
-                let any_rhs_var = context.push(ElemType::any(vec![line_no.in_at(1)]));
-                let bool_var = context.push(ElemSymbol::Bool.elem_type(vec![line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![any_lhs_var, any_rhs_var],
-                    o_type: vec![bool_var],
-                })
-            },
-
-            Instruction::Concat => {
-                let mut context = Context::new();
-                let concat_var = context.push(ElemType::concat_type(vec![line_no.in_at(0), line_no.in_at(1), line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![concat_var, concat_var],
-                    o_type: vec![concat_var],
-                })
-            },
-
-            Instruction::Index => {
-                let mut context = Context::new();
-                let number_var = context.push(ElemSymbol::Number.elem_type(vec![line_no.in_at(0)]));
-                let index_var = context.push(ElemType::index_type(vec![line_no.in_at(1), line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![number_var, index_var],
-                    o_type: vec![index_var],
-                })
-            },
-
-            Instruction::Lookup => {
-                let mut context = Context::new();
-                let string_var = context.push(ElemSymbol::String.elem_type(vec![line_no.in_at(0)]));
-                let object_var = context.push(ElemSymbol::Object.elem_type(vec![line_no.in_at(1), line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![string_var, object_var],
-                    o_type: vec![object_var],
-                })
-            },
-
-            Instruction::Slice => {
-                let mut context = Context::new();
-                let offset_number_var = context.push(ElemSymbol::Number.elem_type(vec![line_no.in_at(0)]));
-                let length_number_var = context.push(ElemSymbol::Number.elem_type(vec![line_no.in_at(1)]));
-                let slice_var = context.push(ElemType::slice_type(vec![line_no.in_at(2), line_no.out_at(0)]));
-                Ok(Type {
-                    context: context,
-                    i_type: vec![offset_number_var, length_number_var, slice_var],
-                    o_type: vec![slice_var],
-                })
-            },
-        }.or_else(|e| Err(TypeError::InstructionTypeOfDetail {
-            instruction: self.clone(),
-            error: Box::new(e),
-        }))
-    }
-}
-
 // TODO: split up TypeError
 // TODO: add layers of detail to TypeIdMapGetUnknownTypeId
 
@@ -982,79 +1706,10 @@ pub enum TypeError {
     #[error("TypeError::compose disjoint_union {0}")]
     ComposeDisjointUnion(ContextError),
 
-
-    #[error("Instruction::type_of resulted in restack error: {0:?}")]
-    InstructionTypeOfRestack(RestackError),
-
-    #[error("Instruction::type_of resulted in an error involving: {instruction:?};\n {error:?}")]
-    InstructionTypeOfDetail {
-        instruction: Instruction,
-        error: Box<Self>,
-    },
-
-    #[error("Instructions::type_of called on an empty Vec of Instruction's")]
-    InstructionsTypeOfEmpty,
-
-    #[error("Instructions::type_of resulted in an error on line: {line_no:?};\n {error:?}")]
-    InstructionsTypeOfLineNo {
-        line_no: usize,
-        error: Box<Self>,
-    },
-
     #[error("Type::normalize applying TypeIdMap failed: {0:?}")]
     TypeIdMapError(TypeIdMapError),
 }
 
-
-
-// pub type Stack = Vec<Elem>;
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
-pub struct Instructions {
-    pub instructions: Vec<Instruction>,
-}
-
-impl IntoIterator for Instructions {
-    type Item = Instruction;
-    type IntoIter = <Vec<Instruction> as std::iter::IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.instructions.into_iter()
-    }
-}
-
-impl Instructions {
-    pub fn type_of(&self) -> Result<Type, TypeError> {
-        let mut current_type = Type::id();
-        for (i, instruction) in self.instructions.iter().enumerate() {
-            current_type = current_type.compose(instruction.type_of(From::from(i + 1))?)
-                .or_else(|e| Err(TypeError::InstructionsTypeOfLineNo { // TODO: deprecated by Location
-                    line_no: i,
-                    error: Box::new(e),
-                }))?;
-
-            println!("line {i}: {current_type}", i = i, current_type = current_type);
-        }
-        Ok(current_type)
-    }
-}
-
-// Test program #1: [] -> []
-//
-// Instruction::Push(Elem::Bool(true)),
-// Instruction::Restack(Restack::id()),
-// Instruction::AssertTrue,
-
-// Test program #2
-//
-// ∀ (t0 ∊ {JSON}),
-// ∀ (t1 ∊ {JSON}),
-// ∀ (t2 ∊ {Object}),
-// [t1] ->
-// [t0, t2, t1]
-//
-// Instruction::Push(Elem::Json(Default::default())),
-// Instruction::UnpackJson(ElemSymbol::Object),
-// Instruction::Restack(Restack::dup()),
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TypeIdMap {
@@ -1095,405 +1750,4 @@ impl TypeIdMap {
         type_vars.iter().enumerate().map(|(i, x)| Ok(self.get(x, i)?.clone())).collect()
     }
 }
-
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////////////////
-//////////////////////////////
-////////////////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TUnit {}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TBool {
-    get_bool: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TNumber {
-    number: serde_json::Number,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TBytes {
-    bytes: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TString {
-    string: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TArray {
-    array: Vec<serde_json::Value>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TObject {
-    object: serde_json::Map<String, serde_json::Value>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TJson {
-    json: serde_json::Value,
-}
-
-
-
-
-
-// Deriving a string from the type without any values allows debugging TEq
-pub trait TypeName {
-    fn type_name(x: PhantomData<Self>) -> &'static str;
-}
-
-impl TypeName for TUnit {
-    fn type_name(_: PhantomData<Self>) -> &'static str {
-        "Unit"
-    }
-}
-
-
-pub trait Teq<T> {
-    type Other;
-
-    fn transport(&self, x: T) -> Self::Other;
-}
-
-impl<T, U: Clone> Teq<T> for U {
-    type Other = T;
-
-    fn transport(&self, x: T) -> Self::Other {
-        x
-    }
-}
-
-#[derive(Clone)]
-pub struct TEq<T, U>
-{
-    teq: Arc<dyn Teq<T, Other = U>>,
-}
-
-impl<T, U> PartialEq for TEq<T, U> {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl<T, U> Eq for TEq<T, U> {}
-
-impl<T, U> TEq<T, U> {
-    pub fn transport(&self, x: T) -> U {
-        (*self.teq).transport(x)
-    }
-
-    // // TODO: compose
-    // pub fn compose<V>(&self, uv: TEq<U, V>) -> TEq<T, V> {
-    //     TEq {
-    //         teq: Box::new(()),
-    //     }
-    // }
-}
-
-impl<T> TEq<T, T> {
-    pub fn refl(_x: PhantomData<T>) -> Self {
-        TEq {
-            teq: Arc::new(()),
-        }
-    }
-}
-
-impl<T: TypeName, U: TypeName> fmt::Debug for TEq<T, U> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "Teq {{ teq: Teq<{0}, {1}> }}", TypeName::type_name(PhantomData::<T>), TypeName::type_name(PhantomData::<T>))
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum IsElem<T> {
-    Unit(TEq<T, TUnit>),
-    Bool(TEq<T, TBool>),
-    // Number(TEq<T, serde_json::Number>),
-    // Bytes(TEq<T, Vec<u8>>),
-    // String(TEq<T, String>),
-    // Array(TEq<T, Vec<serde_json::Value>>),
-    // Object(TEq<T, serde_json::Map<String, serde_json::Value>>),
-    // Json(TEq<T, serde_json::Value>),
-}
-
-impl<T: TypeName> fmt::Debug for IsElem<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "IsElem {}", TypeName::type_name(PhantomData::<T>))
-    }
-}
-
-// impl<T: TypeName, U: TypeName> fmt::Debug for TEq<T, U> {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-//         write!(f, "Teq {{ teq: Teq<{0}, {1}> }}", TypeName::type_name(PhantomData<T>), TypeName::type_name(PhantomData<T>))
-//     }
-// }
-
-
-
-
-impl<T> IsElem<T> {
-    pub fn elem_symbol(&self) -> ElemSymbol {
-        match self {
-            Self::Unit(_) => ElemSymbol::Unit,
-            Self::Bool(_) => ElemSymbol::Bool,
-            // Self::Number(_) => ElemSymbol::Number,
-            // Self::Bytes(_) => ElemSymbol::Bytes,
-            // Self::String(_) => ElemSymbol::String,
-            // Self::Array(_) => ElemSymbol::Array,
-            // Self::Object(_) => ElemSymbol::Object,
-            // Self::Json(_) => ElemSymbol::Json,
-        }
-    }
-
-    pub fn to_elem(&self, x: T) -> Elem {
-        match self {
-            Self::Unit(_) => Elem::Unit,
-            Self::Bool(eq) => Elem::Bool(eq.transport(x).get_bool),
-            // Self::Number(eq) => Elem::Number(eq.transport(x)),
-            // Self::Bytes(eq) => Elem::Bytes(eq.transport(x)),
-            // Self::String(eq) => Elem::String(eq.transport(x)),
-            // Self::Array(eq) => Elem::Array(eq.transport(x)),
-            // Self::Object(eq) => Elem::Object(eq.transport(x)),
-            // Self::Json(eq) => Elem::Json(eq.transport(x)),
-        }
-    }
-
-    // TODO: from_elem
-    // fn from_elem(x: &Elem) -> Option<Self> where Self: Sized;
-}
-
-
-// fn fold<B, F>(&self, init: B, f: F) -> B where F: Fn(B, Elem) -> B;
-pub trait HList: Clone + IntoIterator<Item = Elem> {
-    type Hd;
-    type Tl: HList;
-
-    // fn is_empty(&self) -> bool;
-
-    fn hd(&self) -> Self::Hd;
-    fn hd_is_elem(&self) -> IsElem<Self::Hd>;
-
-    // fn tl(&self) -> Self::Tl;
-    // fn cons<T>(&self, x: T, is_elem: IsElem<T>) -> Cons<T, Self> where Self: Sized;
-
-}
-
-
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Nil { }
-
-impl Iterator for Nil {
-    type Item = Elem;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        None
-    }
-}
-
-impl HList for Nil {
-    type Hd = TUnit;
-    type Tl = Nil;
-
-    // fn is_empty(&self) -> bool {
-    //     true
-    // }
-
-    fn hd(&self) -> Self::Hd {
-        TUnit {}
-    }
-
-    fn hd_is_elem(&self) -> IsElem<Self::Hd> {
-        IsElem::Unit(TEq::refl(PhantomData::<Self::Hd>))
-    }
-
-    // fn tl(&self) -> Self::Tl {
-    //     (*self).clone()
-    // }
-
-    // fn cons<U: Trait<T>>(&self, x: U) -> Cons<T, U, Self>
-    // where
-    //     Self: Sized,
-    // {
-    //     Cons {
-    //         t: PhantomData,
-    //         hd: x,
-    //         tl: (*self).clone(),
-    //     }
-    // }
-}
-
-
-#[derive(Clone, PartialEq, Eq)]
-pub struct Cons<T, U: HList> {
-    is_elem: IsElem<T>,
-    hd: T,
-    tl: U,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub struct IterCons<T, U: HList> {
-    cons: Cons<T, U>,
-    at_head: bool,
-}
-
-impl<T: Copy, U: HList> IntoIterator for Cons<T, U> {
-    type Item = Elem;
-    type IntoIter = IterCons<T, U>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IterCons {
-            cons: self,
-            at_head: true,
-        }
-    }
-}
-
-impl<T: Copy, U: HList> Iterator for IterCons<T, U> {
-    type Item = Elem;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.at_head {
-            Some(self.cons.hd_is_elem().to_elem(self.cons.hd))
-        } else {
-            let self_cons = self.cons.clone();
-            *self = self_cons.into_iter();
-            self.next()
-        }
-    }
-}
-
-impl<T: Copy, U: HList> HList for Cons<T, U> {
-    type Hd = T;
-    type Tl = U;
-
-    // fn is_empty(&self) -> bool {
-    //     false
-    // }
-
-    fn hd(&self) -> Self::Hd {
-        self.hd
-    }
-
-    fn hd_is_elem(&self) -> IsElem<Self::Hd> {
-        self.is_elem.clone()
-    }
-
-    // fn tl(&self) -> Self::Tl {
-    //     self.tl.clone()
-    // }
-
-    // fn cons<W: Trait<T>>(&self, x: W) -> Cons<T, W, Self> {
-    //     Cons {
-    //         t: PhantomData,
-    //         hd: x,
-    //         tl: (*self).clone(),
-    //     }
-    // }
-
-}
-
-
-
-// pub fn demo_triple() -> Cons<(), TBool, Cons<(), TUnit, Cons<(), TBool, Nil<()>>>> {
-//     Nil { t: PhantomData }
-//     .cons(TBool { get_bool: true })
-//     .cons(TUnit { })
-//     .cons(TBool { get_bool: false })
-// }
-
-// pub fn demo_triple_with_tl_handles_intermediate_types() -> Cons<(), TBool, Cons<(), TUnit, Cons<(), TBool, Nil<()>>>> {
-//     Nil { t: PhantomData }
-//     .cons(TBool { get_bool: true })
-//     .cons(TUnit { })
-//     .cons(TBool { get_bool: false })
-//     .cons(TBool { get_bool: true })
-//     .cons(TUnit { })
-//     .tl()
-//     .tl()
-// }
 

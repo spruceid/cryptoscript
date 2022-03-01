@@ -4,9 +4,14 @@ mod arbitrary;
 pub use arbitrary::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
 mod elem;
 pub use elem::{Elem, ElemSymbol};
+mod stack;
+pub use stack::{Stack, StackError};
 mod types;
-pub use types::{Instruction, Instructions};
+mod types_scratch;
+// pub use types::{Instruction, Instructions};
 // , demo_triple, demo_triple_with_tl_handles_intermediate_types, HList
+mod instruction;
+pub use instruction::{Instruction, Instructions};
 mod parse;
 pub use parse::{parse, parse_json};
 mod executor;
