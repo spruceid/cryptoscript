@@ -262,7 +262,7 @@ impl<T> IsElem<T> {
     }
 
     // TODO: from_elem
-    fn from_elem(self, x: Elem) -> Option<T> {
+    pub fn from_elem(self, x: Elem) -> Option<T> {
         match (self, x) {
             (Self::Unit(eq), Elem::Unit) => Some(eq.transport_sym(())),
             (Self::Bool(eq), Elem::Bool(x)) => Some(eq.transport_sym(x)),
