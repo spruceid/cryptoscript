@@ -14,6 +14,148 @@ use generic_array::sequence::GenericSequence;
 use generic_array::{GenericArray, GenericArrayIter, ArrayLength};
 use typenum::marker_traits::Unsigned;
 
+
+pub trait Elems: Clone + Into<Elem> {
+    type Hd: AnElem;
+    type Tl: Elems;
+
+    fn is_left(&self) -> bool;
+    fn left(s: PhantomData<Self>, x: Self::Hd) -> Self;
+    fn right(s: PhantomData<Self>, x: Self::Tl) -> Self;
+    fn or<T, F: Fn(Self::Hd) -> T, G: Fn(Self::Tl) -> T>(&self, f: F, g: G) -> T;
+    fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct Singleton<T: AnElem> {
+    t: T,
+}
+
+impl<T: AnElem> Into<Elem> for Singleton<T> {
+    fn into(self) -> Elem {
+        AnElem::is_elem(PhantomData::<T>).to_elem(self.t)
+    }
+}
+
+// #[derive(Clone, PartialEq, Eq)]
+// pub struct IterSingleton<T: AnElem> {
+//     iter: Option<T>,
+// }
+
+// impl<T: AnElem> IntoIterator for Singleton<T> {
+//     type Item = Elem;
+//     type IntoIter = IterSingleton<T>;
+//     fn into_iter(self) -> Self::IntoIter {
+//         IterSingleton {
+//             iter: Some(self.t),
+//         }
+//     }
+// }
+
+// impl<T: AnElem> Iterator for IterSingleton<T> {
+//     type Item = Elem;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.iter.clone() {
+//             None => None,
+//             Some(x) => {
+//                 self.iter = None;
+//                 Some(AnElem::is_elem(PhantomData::<T>).to_elem(x.clone()))
+//             },
+//         }
+//     }
+// }
+
+impl<T: AnElem> Elems for Singleton<T> {
+    type Hd = T;
+    type Tl = Singleton<T>;
+
+    fn is_left(&self) -> bool { true }
+
+    fn left(_s: PhantomData<Self>, x: Self::Hd) -> Self {
+        Singleton {
+            t: x,
+        }
+    }
+
+    fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self {
+        x
+    }
+
+    fn or<U, F: Fn(Self::Hd) -> U, G: Fn(Self::Tl) -> U>(&self, f: F, _g: G) -> U {
+        f(self.t.clone())
+    }
+
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError> {
+        Ok(Singleton {
+            t: AnElem::is_elem(PhantomData::<Self::Hd>).pop(stack)?,
+        })
+    }
+}
+
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum Or<T: AnElem, U: Elems> {
+    Left(T),
+    Right(U),
+}
+
+impl<T: AnElem, U: Elems> Into<Elem> for Or<T, U> {
+    fn into(self) -> Elem {
+        match self {
+            Self::Left(x) => AnElem::is_elem(PhantomData).to_elem(x),
+            Self::Right(x) => x.into(),
+        }
+    }
+}
+
+impl<T: AnElem, U: Elems> Elems for Or<T, U> {
+    type Hd = T;
+    type Tl = U;
+
+    fn is_left(&self) -> bool {
+        match self {
+            Self::Left(_) => true,
+            Self::Right(_) => false,
+        }
+    }
+
+    fn left(_s: PhantomData<Self>, x: Self::Hd) -> Self {
+        Self::Left(x)
+    }
+
+    fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self {
+        Self::Right(x)
+    }
+
+    fn or<V, F: Fn(Self::Hd) -> V, G: Fn(Self::Tl) -> V>(&self, f: F, g: G) -> V {
+        match self {
+            Self::Left(x) => f(x.clone()),
+            Self::Right(x) => g(x.clone()),
+        }
+    }
+
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError> {
+        AnElem::is_elem(PhantomData::<Self::Hd>)
+            .pop(stack)
+            .map(|x| Or::Left(x))
+            .or_else(|e_hd| {
+               Ok(Or::Right(Elems::pop(PhantomData::<Self::Tl>, stack)?))
+                   .map_err(|e_tl| {
+                       StackError::PopOr {
+                           e_hd: Box::new(e_hd),
+                           e_tl: Box::new(e_tl),
+                       }})
+            })
+    }
+}
+
+
+
+
+
+
+
+
 // fn cons<U, V: AnElem + Trait<U, V>>(self, u: PhantomData<U>, x: V) -> ConsT<U, V, Self> where Self: Sized;
 #[derive(Clone, PartialEq, Eq)]
 pub struct Cons<T: AnElem, N: ArrayLength<T>, U: IList> {

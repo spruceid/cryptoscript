@@ -22,7 +22,7 @@ use thiserror::Error;
 pub enum Empty {}
 
 impl Empty {
-    fn absurd<T>(&self, _p: PhantomData<T>) -> T {
+    pub fn absurd<T>(&self, _p: PhantomData<T>) -> T {
         match *self {}
     }
 }
@@ -274,6 +274,17 @@ impl<T> IsElem<T> {
             // (Self::Json(eq), Elem::Json(x)) => Some(eq.transport_sym(x)),
             _ => None,
         }
+    }
+
+    pub fn pop(self, stack: &mut Stack) -> Result<T, StackError> {
+        let hd_elem = stack.pop()?;
+        let elem_symbol = self.elem_symbol();
+        Ok(self.from_elem(hd_elem.clone())
+           .ok_or_else(|| StackError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: hd_elem.clone(),
+                stack: stack.clone(),
+        })?)
     }
 }
 

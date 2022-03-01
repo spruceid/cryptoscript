@@ -61,6 +61,12 @@ pub enum StackError {
 
     #[error("Stack::pop_generic_array: unimplemented")]
     TODO,
+
+    #[error("HList::TODO: {e_hd:?}\n{e_tl:?}")]
+    PopOr {
+        e_hd: Box<Self>,
+        e_tl: Box<Self>,
+    },
 }
 
 // TODO: relocate LineNo, ArgumentIndex, Location
