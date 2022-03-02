@@ -1,5 +1,5 @@
 // use crate::restack::{RestackError};
-use crate::elem::{Elem, ElemSymbol};
+use crate::elem::{Elem, AnElem, AnElemError, ElemSymbol};
 
 // use std::collections::BTreeMap;
 // use std::cmp;
@@ -10,11 +10,14 @@ use crate::elem::{Elem, ElemSymbol};
 // // use std::alloc::string;
 // use std::marker::PhantomData;
 // use std::sync::Arc;
+use std::marker::PhantomData;
 
 use enumset::{EnumSet};
 use serde::{Deserialize, Serialize};
 // use serde_json::{Map, Number, Value};
 use thiserror::Error;
+use generic_array::{GenericArray, ArrayLength};
+use typenum::marker_traits::Unsigned;
 
 
 // TODO: use for execution
@@ -32,24 +35,40 @@ impl Stack {
         Ok(result.clone())
     }
 
+    pub fn pop_elem<T: AnElem>(&mut self, _t: PhantomData<T>) -> Result<T, StackError> {
+        let hd_elem = self.pop()?;
+        Ok(<T as AnElem>::from_elem(PhantomData, hd_elem)?)
+    }
+
     pub fn push(&mut self, elem: Elem) {
         let mut memo = vec![elem];
         // memo.append(&mut self.stack.clone());
         memo.append(&mut self.stack);
         self.stack = memo;
     }
+
+    // TODO: reversed?
+    pub fn pop_generic_array<T: AnElem, N: ArrayLength<T>>(&mut self,
+                                                           _t: PhantomData<T>,
+                                                           _n: PhantomData<N>) -> Result<GenericArray<T, N>, StackError> {
+        let mut xs = vec![];
+        for _current_index in 1..<N as Unsigned>::USIZE {
+            let hd_elem = self.pop()?;
+            xs.push(AnElem::from_elem(PhantomData::<T>, hd_elem)?)
+        }
+        GenericArray::from_exact_iter(xs).ok_or_else(|| StackError::TODO)
+    }
 }
+
+
 
 #[derive(Clone, Debug, Error)]
 pub enum StackError {
     #[error("Stack::pop: tried to pop from an empty stack")]
     EmptyStack,
 
-    #[error("AnElem::from_elem: element popped from the stack {found:?} wasn't the expected type {expected:?}")]
-    UnexpectedElemType {
-        expected: EnumSet<ElemSymbol>,
-        found: Elem,
-    },
+    #[error("Stack:pop_elem threw an error from AnElem {0:?}")]
+    AnElemError(AnElemError),
 
     #[error("pop: element popped from the stack {found:?} wasn't the expected type {expected:?} (remaining stack: {stack:?})")]
     UnexpectedElemTypeIn {
@@ -67,12 +86,12 @@ pub enum StackError {
 
     #[error("Stack::pop_generic_array: unimplemented")]
     TODO,
+}
 
-    #[error("HList::TODO: {e_hd:?}\n{e_tl:?}")]
-    PopOr {
-        e_hd: Box<Self>,
-        e_tl: Box<Self>,
-    },
+impl From<AnElemError> for StackError {
+    fn from(x: AnElemError) -> Self {
+        Self::AnElemError(x)
+    }
 }
 
 // TODO: relocate LineNo, ArgumentIndex, Location

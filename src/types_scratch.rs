@@ -1,6 +1,6 @@
-use crate::elem::{Elem, ElemSymbol};
+use crate::elem::{Elem, AnElem, AnElemError, ElemSymbol};
 use crate::stack::{Stack, StackError};
-use crate::types::{Empty, AnElem, AnError, Nil};
+use crate::types::{AnError, Nil};
 
 use std::iter::{FromIterator};
 use std::marker::PhantomData;
@@ -9,8 +9,11 @@ use enumset::EnumSet;
 use generic_array::typenum::{U0, U2};
 use generic_array::sequence::GenericSequence;
 use generic_array::{GenericArray, GenericArrayIter, ArrayLength};
-use typenum::marker_traits::Unsigned;
+// use typenum::marker_traits::Unsigned;
+use serde_json::{Map, Value};
 
+// NEXT:
+// - Acheive parity between ElemList -> Elems/IList/IOList
 
 pub trait Elems: AnElem {
     type Hd: AnElem;
@@ -36,7 +39,7 @@ impl<T: AnElem> AnElem for Singleton<T> {
         self.t.to_elem()
     }
 
-    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
         <T as AnElem>::from_elem(PhantomData, x).map(|y| {
             Singleton {
                 t: y,
@@ -87,13 +90,13 @@ impl<T: AnElem, U: Elems> AnElem for Or<T, U> {
         }
     }
 
-    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
         AnElem::from_elem(PhantomData::<T>, x.clone())
             .map(|y| Or::Left(y))
             .or_else(|e_hd| {
                Ok(Or::Right(AnElem::from_elem(PhantomData::<U>, x)?))
                    .map_err(|e_tl| {
-                       StackError::PopOr {
+                       AnElemError::PopOr {
                            e_hd: Box::new(e_hd),
                            e_tl: Box::new(e_tl),
                        }})
@@ -138,6 +141,22 @@ impl<T: AnElem, U: Elems> Elems for Or<T, U> {
 
 
 
+
+
+
+
+pub trait IList: Clone + IntoIterator<Item = Elem> {
+    type Hd: AnElem;
+    type N: ArrayLength<Self::Hd>;
+    type Tl: IList;
+
+    fn is_empty(&self) -> bool;
+    fn hd(&self) -> GenericArray<Self::Hd, Self::N>;
+    fn tl(&self) -> Self::Tl;
+    fn cons<T: AnElem, M: ArrayLength<T>>(self, x: GenericArray<T, M>) -> Cons<T, M, Self> where Self: Sized;
+    fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
+}
+
 // fn cons<U, V: AnElem + Trait<U, V>>(self, u: PhantomData<U>, x: V) -> ConsT<U, V, Self> where Self: Sized;
 #[derive(Clone, PartialEq, Eq)]
 pub struct Cons<T: AnElem, N: ArrayLength<T>, U: IList> {
@@ -170,21 +189,6 @@ impl<T: AnElem, N: ArrayLength<T>, U: IList> Iterator for IterCons<T, N, U> {
             .map(|x| x.to_elem())
             .or_else(|| self.cons.next())
     }
-}
-
-
-
-
-pub trait IList: Clone + IntoIterator<Item = Elem> {
-    type Hd: AnElem;
-    type N: ArrayLength<Self::Hd>;
-    type Tl: IList;
-
-    fn is_empty(&self) -> bool;
-    fn hd(&self) -> GenericArray<Self::Hd, Self::N>;
-    fn tl(&self) -> Self::Tl;
-    fn cons<T: AnElem, M: ArrayLength<T>>(self, x: GenericArray<T, M>) -> Cons<T, M, Self> where Self: Sized;
-    fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
 }
 
 impl IList for Nil {
@@ -256,21 +260,6 @@ impl<T: AnElem, N: ArrayLength<T>, U: IList> IList for Cons<T, N, U> {
     }
 }
 
-impl Stack {
-    // TODO: reversed?
-    pub fn pop_generic_array<T: AnElem, N: ArrayLength<T>>(&mut self,
-                                                           _t: PhantomData<T>,
-                                                           _n: PhantomData<N>) -> Result<GenericArray<T, N>, StackError> {
-        let mut xs = vec![];
-        for _current_index in 1..<N as Unsigned>::USIZE {
-            let hd_elem = self.pop()?;
-            xs.push(AnElem::from_elem(PhantomData::<T>, hd_elem)?)
-        }
-        GenericArray::from_exact_iter(xs).ok_or_else(|| StackError::TODO)
-    }
-}
-
-
 pub trait IOList: IList {
     type Return: AnElem;
 }
@@ -338,6 +327,198 @@ pub trait IsInstructionT: std::fmt::Debug {
     fn run(&self, x: Self::In) -> Result<<Self::In as IOList>::Return, Self::Error>;
 }
 
+pub trait FromIntoIterator: IntoIterator + FromIterator<<Self as IntoIterator>::Item> {}
+
+impl<T> IntoIterator for Singleton<T>
+where
+    T: AnElem + IntoIterator,
+{
+    type Item = <T as IntoIterator>::Item;
+    type IntoIter = <T as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.t.into_iter()
+    }
+}
+
+impl<T> FromIterator<<T as IntoIterator>::Item> for Singleton<T>
+where
+    T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
+{
+    fn from_iter<U>(iter: U) -> Self
+    where
+        U: IntoIterator<Item = <T as IntoIterator>::Item>,
+    {
+        Singleton {
+            t: <T as FromIterator<<T as IntoIterator>::Item>>::from_iter(iter),
+        }
+    }
+}
+
+pub enum OrIter<T, U>
+where
+    T: AnElem + IntoIterator,
+    U: Elems + IntoIterator,
+{
+    Left(<T as IntoIterator>::IntoIter),
+    Right(<U as IntoIterator>::IntoIter),
+}
+
+pub enum OrIterItem<T, U>
+where
+    T: AnElem + IntoIterator,
+    U: Elems + IntoIterator,
+{
+    Left(<T as IntoIterator>::Item),
+    Right(<U as IntoIterator>::Item),
+}
+
+impl<T, U> Iterator for OrIter<T, U>
+where
+    T: AnElem + IntoIterator,
+    U: Elems + IntoIterator,
+{
+    type Item = OrIterItem<T, U>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Left(x) => x.next().map(|y| OrIterItem::Left(y)),
+            Self::Right(x) => x.next().map(|y| OrIterItem::Right(y)),
+        }
+    }
+}
+
+impl<T, U> IntoIterator for Or<T, U>
+where
+    T: AnElem + IntoIterator,
+    U: Elems + IntoIterator,
+{
+    type Item = OrIterItem<T, U>;
+    type IntoIter = OrIter<T, U>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Self::Left(x) => OrIter::Left(x.into_iter()),
+            Self::Right(x) => OrIter::Right(x.into_iter()),
+        }
+    }
+}
+
+
+pub struct ResultOrIterError<T> {
+    result: Result<T, OrIterError>,
+}
+
+pub enum OrIterError {
+    FromEmptyIter,
+
+    AnElemError(AnElemError),
+
+    MoreThanSingleton {
+        // hd_elem: String,
+        // other_elems: Vec<Elem>,
+    },
+}
+
+impl<T> IntoIterator for ResultOrIterError<T>
+where
+    T: IntoIterator,
+{
+    type Item = <Option<T> as IntoIterator>::Item;
+    type IntoIter = <Option<T> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self.result {
+            Ok(x) => Some(x).into_iter(),
+            Err(_) => None.into_iter(),
+        }
+    }
+}
+
+// impl<T, U> FromIterator<OrIterItem<T, U>> for ResultOrIterError<Or<T, U>>
+// where
+//     T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
+//     U: Elems + IntoIterator + FromIterator<<U as IntoIterator>::Item>,
+// {
+//     fn from_iter<V>(iter: V) -> Self
+//     where
+//         V: IntoIterator<Item = OrIterItem<T, U>>,
+//     {
+//         // let mut iter_mut = iter.into_iter();
+//         // let opt_hd_elem = iter_mut.next();
+//         // let rest = iter_mut.next();
+//         // ResultOrIterError {
+//         //     result: match (opt_hd_elem, rest) {
+//         //         (None, _) => Err(OrIterError::FromEmptyIter),
+//         //         (Some(hd_elem), Some(other_elems)) => Err(OrIterError::MoreThanSingleton {
+//         //             // TODO: debug info
+//         //             // hd_elem: hd_elem,
+//         //             // other_elems: other_elems,
+//         //         }),
+//         //         (Some(OrIterItem::Left(hd_elem)), None) =>
+//         //             match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
+//         //                 Ok(x) => Ok(x),
+//         //                 Err(e) => Err(OrIterError::AnElemError(e)),
+//         //             },
+//         //         (Some(OrIterItem::Right(hd_elem)), None) =>
+//         //             match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
+//         //                 Ok(x) => Ok(x),
+//         //                 Err(e) => Err(OrIterError::AnElemError(e)),
+//         //             },
+//         //     },
+//         // }
+//     }
+// }
+
+// impl<T, U> FromIterator<OrIterItem<T, U>> for OrIterFrom<T, U>
+// where
+//     T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
+//     U: Elems + IntoIterator + FromIterator<<U as IntoIterator>::Item>,
+// {
+//     fn from_iter<V>(iter: V) -> Self
+//     where
+//         V: IntoIterator<Item = OrIterItem<T, U>>,
+//     {
+//         let mut iter_mut = iter.into_iter();
+//         let opt_hd_elem = iter_mut.next();
+//         let rest = iter_mut.next();
+//         match (opt_hd_elem, rest) {
+//             (None, _) => OrIterFrom::Err(OrIterError::FromEmptyIter),
+//             (Some(hd_elem), Some(other_elems)) => OrIterFrom::Err(OrIterError::MoreThanSingleton {
+//                 // TODO: debug info
+//                 // hd_elem: hd_elem,
+//                 // other_elems: other_elems,
+//             }),
+//             (Some(OrIterItem::Left(hd_elem)), None) =>
+//                 match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
+//                     Ok(x) => OrIterFrom::Or(x),
+//                     Err(e) => OrIterFrom::Err(OrIterError::AnElemError(e)),
+//                 },
+//             (Some(OrIterItem::Right(hd_elem)), None) =>
+//                 match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
+//                     Ok(x) => OrIterFrom::Or(x),
+//                     Err(e) => OrIterFrom::Err(OrIterError::AnElemError(e)),
+//                 },
+//         }
+//     }
+// }
+
+
+
+// impl<T, U> FromIterator<<T as IntoIterator>::Item> for Or<T, U>
+// where
+//     T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
+//     U: Elems + IntoIterator<Item = <T as IntoIterator>::Item> + FromIterator<<T as IntoIterator>::Item>,
+// {
+//     fn from_iter<V>(iter: V) -> Self
+//     where
+//         V: IntoIterator<Item = <T as IntoIterator>::Item>,
+//     {
+//         _
+//     }
+// }
+
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Concat<T: AnElem> {
     t: PhantomData<T>,
@@ -346,16 +527,30 @@ struct Concat<T: AnElem> {
 struct ConcatError {}
 impl AnError for ConcatError {}
 
-impl<T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>> IsInstructionT for Concat<T> {
-    type In = ConsOut<T, U2, Nil>;
+
+// bytes, string, array, object
+impl IsInstructionT for Concat<()> {
+    type In = ConsOut<Or<Vec<Value>, Singleton<Map<String, Value>>>, U2, Nil>;
     type Error = ConcatError;
 
     fn run(&self, x: Self::In) -> Result<<Self::In as IOList>::Return, Self::Error> {
-        let lhs = x.hd()[0].clone();
-        let rhs = x.hd()[1].clone();
+        let lhs: Or<Vec<Value>, Singleton<Map<String, Value>>> = x.hd()[0].clone();
+        let rhs: Or<Vec<Value>, Singleton<Map<String, Value>>> = x.hd()[1].clone();
         Ok(lhs.into_iter().chain(rhs.into_iter()).collect())
     }
 }
+
+
+// impl<T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>> IsInstructionT for Concat<T> {
+//     type In = ConsOut<T, U2, Nil>;
+//     type Error = ConcatError;
+
+//     fn run(&self, x: Self::In) -> Result<<Self::In as IOList>::Return, Self::Error> {
+//         let lhs = x.hd()[0].clone();
+//         let rhs = x.hd()[1].clone();
+//         Ok(lhs.into_iter().chain(rhs.into_iter()).collect())
+//     }
+// }
 
 
 

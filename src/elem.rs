@@ -4,6 +4,8 @@ use thiserror::Error;
 
 use std::cmp;
 use std::convert::TryFrom;
+use std::marker::PhantomData;
+use std::iter::{FromIterator, IntoIterator};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -234,7 +236,7 @@ impl Elem {
         Ok(Self::Bool(result))
     }
 
-    fn concat_generic<T: IntoIterator + std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(x: T, y: T) -> T {
+    fn concat_generic<T: IntoIterator + FromIterator<<T as IntoIterator>::Item>>(x: T, y: T) -> T {
         x.into_iter().chain(y.into_iter()).collect()
     }
 
@@ -257,10 +259,10 @@ impl Elem {
     }
 
     fn slice_generic<T: Clone + IntoIterator +
-      std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(offset: Number,
-                                                                     length: Number,
-                                                                     iterable: T,
-                                                                     elem_symbol: ElemSymbol) ->
+        FromIterator<<T as IntoIterator>::Item>>(offset: Number,
+                                                 length: Number,
+                                                 iterable: T,
+                                                 elem_symbol: ElemSymbol) ->
         Result<T, ElemError> {
         let u_offset = offset.as_u64()
             .ok_or_else(|| ElemError::SliceOffsetNotU64(offset.clone()))
@@ -305,7 +307,7 @@ impl Elem {
     }
 
     fn index_generic<T: Clone + IntoIterator +
-        std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(index: Number,
+        FromIterator<<T as IntoIterator>::Item>>(index: Number,
                                                                        iterable: T,
                                                                        elem_symbol: ElemSymbol) ->
       Result<<T as std::iter::IntoIterator>::Item, ElemError> {
@@ -529,5 +531,205 @@ impl From<serde_json::Error> for ElemError {
     fn from(error: serde_json::Error) -> Self {
         ElemError::ToFromJsonFailed(format!("{}", error))
     }
+}
+
+
+
+
+
+
+
+
+
+
+
+pub trait AnElem: Clone + std::fmt::Debug {
+    fn elem_symbol(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
+    fn to_elem(self) -> Elem;
+    fn from_elem(t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError>;
+}
+
+impl AnElem for () {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Unit)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Unit
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Unit => Ok(()),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+impl AnElem for bool {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Bool)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Bool(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Bool(y) => Ok(y),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+impl AnElem for Number {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Number)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Number(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Number(y) => Ok(y),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+impl AnElem for Vec<u8> {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Bytes)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Bytes(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Bytes(y) => Ok(y),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+impl AnElem for String {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::String)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::String(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::String(y) => Ok(y),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+impl AnElem for Vec<Value> {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Array)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Array(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Array(y) => Ok(y),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+impl AnElem for Map<String, Value> {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Object)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Object(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Object(y) => Ok(y),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+impl AnElem for Value {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Json)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Json(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Json(y) => Ok(y),
+            _ => Err(AnElemError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
+    }
+}
+
+
+#[derive(Clone, Debug, Error)]
+pub enum AnElemError {
+    #[error("AnElem::from_elem: element popped from the stack {found:?} wasn't the expected type {expected:?}")]
+    UnexpectedElemType {
+        expected: EnumSet<ElemSymbol>,
+        found: Elem,
+    },
+
+    #[error("<Or<_, _> as AnElem>::from_elem: {e_hd:?}\n{e_tl:?}")]
+    PopOr {
+        e_hd: Box<Self>,
+        e_tl: Box<Self>,
+    },
 }
 
