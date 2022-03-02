@@ -11,7 +11,7 @@ use crate::elem::{Elem, ElemSymbol};
 // use std::marker::PhantomData;
 // use std::sync::Arc;
 
-// use enumset::{EnumSet, enum_set};
+use enumset::{EnumSet};
 use serde::{Deserialize, Serialize};
 // use serde_json::{Map, Number, Value};
 use thiserror::Error;
@@ -45,9 +45,15 @@ pub enum StackError {
     #[error("Stack::pop: tried to pop from an empty stack")]
     EmptyStack,
 
-    #[error("HList::pop: element popped from the stack {found:?} wasn't the expected type {expected:?} (remaining stack: {stack:?})")]
+    #[error("AnElem::from_elem: element popped from the stack {found:?} wasn't the expected type {expected:?}")]
     UnexpectedElemType {
-        expected: ElemSymbol,
+        expected: EnumSet<ElemSymbol>,
+        found: Elem,
+    },
+
+    #[error("pop: element popped from the stack {found:?} wasn't the expected type {expected:?} (remaining stack: {stack:?})")]
+    UnexpectedElemTypeIn {
+        expected: EnumSet<ElemSymbol>,
         found: Elem,
         stack: Stack,
     },

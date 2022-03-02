@@ -10,13 +10,12 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 // use std::alloc::string;
 use std::marker::PhantomData;
-use std::sync::Arc;
+// use std::sync::Arc;
 
 use enumset::{EnumSet, enum_set};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Empty {}
@@ -38,253 +37,141 @@ impl Iterator for Nil {
     }
 }
 
-
-
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TUnit {}
-
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TBool {
-//     get_bool: bool,
-// }
-
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TNumber {
-//     number: serde_json::Number,
-// }
-
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TBytes {
-//     bytes: Vec<u8>,
-// }
-
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TString {
-//     string: String,
-// }
-
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TArray {
-//     array: Vec<serde_json::Value>,
-// }
-
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TObject {
-//     object: serde_json::Map<String, serde_json::Value>,
-// }
-
-// #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-// pub struct TJson {
-//     json: serde_json::Value,
-// }
-
-// Deriving a string from the type without any values allows debugging TEq
-pub trait TypeName {
-    fn type_name(x: PhantomData<Self>) -> &'static str;
-}
-
-impl TypeName for () { // TUnit
-    fn type_name(_: PhantomData<Self>) -> &'static str {
-        "Unit"
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-pub trait Teq<T> {
-    type Other;
-
-    fn transport(&self, x: T) -> Self::Other;
-    fn transport_sym(&self, x: Self::Other) -> T;
-}
-
-impl<T, U: Clone> Teq<T> for U {
-    type Other = T;
-
-    fn transport(&self, x: T) -> Self::Other {
-        x
-    }
-
-    fn transport_sym(&self, x: Self::Other) -> T {
-        x
-    }
-}
-
-#[derive(Clone)]
-pub struct TEq<T: Sized, U: Sized>
-{
-    teq: Arc<dyn Teq<T, Other = U>>,
-}
-
-impl<T: Sized, U: Sized> PartialEq for TEq<T, U> {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl<T: Sized, U: Sized> Eq for TEq<T, U> {}
-
-impl<T: Sized> TEq<T, T> {
-    pub fn refl(_x: PhantomData<T>) -> Self {
-        TEq {
-            teq: Arc::new(()),
-        }
-    }
-}
-
-impl<T: Sized, U: Sized> TEq<T, U> {
-    pub fn transport(&self, x: T) -> U {
-        (*self.teq).transport(x)
-    }
-
-    pub fn transport_sym(&self, x: U) -> T {
-        (*self.teq).transport_sym(x)
-    }
-}
-
-impl<T: TypeName + Sized, U: TypeName + Sized> fmt::Debug for TEq<T, U> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f,
-               "Teq {{ teq: Teq<{0}, {1}> }}",
-               TypeName::type_name(PhantomData::<T>),
-               TypeName::type_name(PhantomData::<T>))
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum IsElem<T: Sized> {
-    Unit(TEq<T, ()>),
-    Bool(TEq<T, bool>),
-    Number(TEq<T, Number>),
-    Bytes(TEq<T, Vec<u8>>),
-    String(TEq<T, String>),
-    Array(TEq<T, Vec<Value>>),
-    Object(TEq<T, Map<String, Value>>),
-    Json(TEq<T, Value>),
-}
-
-impl<T: TypeName> fmt::Debug for IsElem<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "IsElem {}", TypeName::type_name(PhantomData::<T>))
-    }
-}
-
-// impl<T: TypeName, U: TypeName> fmt::Debug for TEq<T, U> {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-//         write!(f, "Teq {{ teq: Teq<{0}, {1}> }}", TypeName::type_name(PhantomData<T>), TypeName::type_name(PhantomData<T>))
-//     }
-// }
-
-
-
-
-
 pub trait AnElem: Clone + std::fmt::Debug {
-    fn is_elem(x: PhantomData<Self>) -> IsElem<Self> where Self: Sized;
+    fn elem_symbol(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
+    fn to_elem(self) -> Elem;
+
+    fn from_elem(t: PhantomData<Self>, x: Elem) -> Result<Self, StackError>;
+
+    fn pop(_t: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError> {
+        let hd_elem = stack.pop()?;
+        <Self as AnElem>::from_elem(PhantomData, hd_elem)
+    }
 }
-
-// impl AnElem for Elem {
-
 
 impl AnElem for () {
-    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
-        IsElem::Unit(TEq::refl(PhantomData))
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Unit)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Unit
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Unit => Ok(()),
+            _ => Err(StackError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
     }
 }
 
 impl AnElem for bool {
-    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
-        IsElem::Bool(TEq::refl(PhantomData))
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Bool)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Bool(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Bool(y) => Ok(y),
+            _ => Err(StackError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
     }
 }
 
 impl AnElem for Vec<u8> {
-    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
-        IsElem::Bytes(TEq::refl(PhantomData))
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Bytes)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Bytes(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Bytes(y) => Ok(y),
+            _ => Err(StackError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
     }
 }
 
 impl AnElem for String {
-    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
-        IsElem::String(TEq::refl(PhantomData))
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::String)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::String(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::String(y) => Ok(y),
+            _ => Err(StackError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
     }
 }
 
 impl AnElem for Value {
-    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
-        IsElem::Json(TEq::refl(PhantomData))
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Json)
+    }
+
+    fn to_elem(self) -> Elem {
+        Elem::Json(self)
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Json(y) => Ok(y),
+            _ => Err(StackError::UnexpectedElemType {
+                expected: elem_symbol,
+                found: x,
+            }),
+        }
     }
 }
 
 impl AnElem for Map<String, Value> {
-    fn is_elem(_x: PhantomData<Self>) -> IsElem<Self> {
-        IsElem::Object(TEq::refl(PhantomData))
-    }
-}
-
-impl<T> IsElem<T> {
-    pub fn elem_symbol(&self) -> ElemSymbol {
-        match self {
-            Self::Unit(_) => ElemSymbol::Unit,
-            Self::Bool(_) => ElemSymbol::Bool,
-            Self::Number(_) => ElemSymbol::Number,
-            Self::Bytes(_) => ElemSymbol::Bytes,
-            Self::String(_) => ElemSymbol::String,
-            Self::Array(_) => ElemSymbol::Array,
-            Self::Object(_) => ElemSymbol::Object,
-            Self::Json(_) => ElemSymbol::Json,
-        }
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::only(ElemSymbol::Object)
     }
 
-    pub fn to_elem(&self, x: T) -> Elem {
-        match self {
-            Self::Unit(_) => Elem::Unit,
-            Self::Bool(eq) => Elem::Bool(eq.transport(x)),
-            Self::Number(eq) => Elem::Number(eq.transport(x)),
-            Self::Bytes(eq) => Elem::Bytes(eq.transport(x)),
-            Self::String(eq) => Elem::String(eq.transport(x)),
-            Self::Array(eq) => Elem::Array(eq.transport(x)),
-            Self::Object(eq) => Elem::Object(eq.transport(x)),
-            Self::Json(eq) => Elem::Json(eq.transport(x)),
-        }
+    fn to_elem(self) -> Elem {
+        Elem::Object(self)
     }
 
-    // TODO: from_elem
-    pub fn from_elem(self, x: Elem) -> Option<T> {
-        match (self, x) {
-            (Self::Unit(eq), Elem::Unit) => Some(eq.transport_sym(())),
-            (Self::Bool(eq), Elem::Bool(x)) => Some(eq.transport_sym(x)),
-            // (Self::Number(eq), Elem::Number(x)) => Some(eq.transport_sym(x)),
-            // (Self::Bytes(eq), Elem::Bytes(x)) => Some(eq.transport_sym(x)),
-            // (Self::String(eq), Elem::String(x)) => Some(eq.transport_sym(x)),
-            // (Self::Array(eq), Elem::Array(x)) => Some(eq.transport_sym(x)),
-            // (Self::Object(eq), Elem::Object(x)) => Some(eq.transport_sym(x)),
-            // (Self::Json(eq), Elem::Json(x)) => Some(eq.transport_sym(x)),
-            _ => None,
-        }
-    }
-
-    pub fn pop(self, stack: &mut Stack) -> Result<T, StackError> {
-        let hd_elem = stack.pop()?;
-        let elem_symbol = self.elem_symbol();
-        Ok(self.from_elem(hd_elem.clone())
-           .ok_or_else(|| StackError::UnexpectedElemType {
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, StackError> {
+        let elem_symbol = <Self as AnElem>::elem_symbol(PhantomData);
+        match x {
+            Elem::Object(y) => Ok(y),
+            _ => Err(StackError::UnexpectedElemType {
                 expected: elem_symbol,
-                found: hd_elem.clone(),
-                stack: stack.clone(),
-        })?)
+                found: x,
+            }),
+        }
     }
 }
 
@@ -361,7 +248,7 @@ impl<T: AnElem, U: ElemList> Iterator for IterConsElem<T, U> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.at_head {
-            Some(AnElem::is_elem(PhantomData::<T>).to_elem(self.cons.hd.clone()))
+            Some(self.cons.clone().hd.to_elem())
         } else {
             let self_cons = self.cons.clone();
             *self = self_cons.into_iter();
@@ -400,11 +287,7 @@ impl<T: AnElem, U: ElemList> ElemList for ConsElem<T, U> {
     fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError> {
         let hd_elem = stack.pop()?;
         Ok(ConsElem {
-            hd: AnElem::is_elem(PhantomData::<Self::Hd>).from_elem(hd_elem.clone()).ok_or_else(|| StackError::UnexpectedElemType {
-                expected: AnElem::is_elem(PhantomData::<Self::Hd>).elem_symbol(),
-                found: hd_elem.clone(),
-                stack: stack.clone(),
-            })?,
+            hd: <Self::Hd as AnElem>::from_elem(PhantomData, hd_elem)?,
             tl: Self::Tl::pop(PhantomData, stack)?,
         })
     }
@@ -493,7 +376,7 @@ impl Stack {
             name: format!("{:?}", instr),
             error: format!("{:?}", e),
             line_no: line_no})?;
-        Ok(self.push(AnElem::is_elem(PhantomData::<T::Out>).to_elem(output)))
+        Ok(self.push(output.to_elem()))
     }
 }
 
