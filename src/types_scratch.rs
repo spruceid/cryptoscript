@@ -185,68 +185,25 @@ where
 
 
 
-
 // + IntoIterator<Item = Elem>
-pub trait IList: Clone {
+pub trait IsList: Clone {
     type Hd: Elems;
-    // type N: ArrayLength<Self::Hd>;
-    type Tl: IList;
+    type Tl: IsList;
 
     fn is_empty(&self) -> bool;
-    // fn hd(&self) -> GenericArray<Self::Hd, Self::N>;
     fn hd(self) -> Self::Hd;
     fn tl(self) -> Self::Tl;
-    // fn cons<T: AnElem, M: ArrayLength<T>>(self, x: GenericArray<T, M>) -> Cons<T, M, Self> where Self: Sized;
     fn cons<T: Elems>(self, x: T) -> Cons<T, Self> {
         Cons {
             hd: x,
             tl: self,
         }
     }
-    // where Self: Sized;
 
     // fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
 }
 
-// fn cons<U, V: AnElem + Trait<U, V>>(self, u: PhantomData<U>, x: V) -> ConsT<U, V, Self> where Self: Sized;
-#[derive(Clone, PartialEq, Eq)]
-// pub struct Cons<T: AnElem, N: ArrayLength<T>, U: IList> {
-//     hd: GenericArray<T, N>,
-//     tl: U,
-// }
-pub struct Cons<T: Elems, U: IList> {
-    hd: T,
-    tl: U,
-}
-
-// pub struct IterCons<T: AnElem, N: ArrayLength<T>, U: IList> {
-//     hd: GenericArrayIter<T, N>,
-//     cons: <U as IntoIterator>::IntoIter,
-// }
-
-// impl<T: AnElem, N: ArrayLength<T>, U: IList> IntoIterator for Cons<T, N, U> {
-//     type Item = Elem;
-//     type IntoIter = IterCons<T, N, U>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         IterCons {
-//             hd: self.hd.into_iter(),
-//             cons: self.tl.into_iter(),
-//         }
-//     }
-// }
-
-// impl<T: AnElem, N: ArrayLength<T>, U: IList> Iterator for IterCons<T, N, U> {
-//     type Item = Elem;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.hd.next()
-//             .map(|x| x.to_elem())
-//             .or_else(|| self.cons.next())
-//     }
-// }
-
-impl IList for Nil {
+impl IsList for Nil {
     type Hd = Singleton<(), U0>;
     type Tl = Nil;
 
@@ -263,13 +220,15 @@ impl IList for Nil {
     fn tl(self) -> Self::Tl {
         Self {}
     }
-
-    // fn pop(_x: PhantomData<Self>, _stack: &mut Stack) -> Result<Self, StackError> {
-    //     Ok(Nil {})
-    // }
 }
 
-impl<T: Elems, U: IList> IList for Cons<T, U> {
+#[derive(Clone, PartialEq, Eq)]
+pub struct Cons<T: Elems, U: IsList> {
+    hd: T,
+    tl: U,
+}
+
+impl<T: Elems, U: IsList> IsList for Cons<T, U> {
     type Hd = T;
     type Tl = U;
 
@@ -300,28 +259,35 @@ impl<T: Elems, U: IList> IList for Cons<T, U> {
 
 
 
+pub trait IList: IsList {
+}
 
+impl IList for Nil {
+}
 
-
-
-
+impl<T: Elems, U: IList> IList for Cons<T, U> {
+}
 
 
 
 /// return_value is private, but get_return_value can be used to extract it
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Return<T: AnElem> {
-    return_value: T,
+pub struct Return<T, U: AnElem> {
+    for_instruction: PhantomData<T>,
+    return_value: U,
 }
 
-impl<T: AnElem> Return<T> {
-    pub fn get_return_value(self) -> T {
+impl<T, U: AnElem> Return<T, U> {
+    pub fn get_return_value(self) -> U {
         self.return_value
     }
 }
 
-pub trait IOList: IList {
+
+pub trait IOList: IsList {
     type Return: AnElem;
+
+    fn returning(self) -> Option<Arc<dyn FnOnce(Self::Return) -> Return<(), Self::Return>>>;
 }
 
 #[derive(Clone)]
@@ -333,7 +299,7 @@ where
     V: IList,
 {
     Left {
-        return_fn: Arc<dyn Fn(T) -> Return<T>>,
+        return_fn: Arc<dyn FnOnce(T) -> Return<(), T>>,
         hd: Singleton<T, N>,
         tl: V,
     },
@@ -343,7 +309,7 @@ where
     }
 }
 
-impl<T, N, U, V> IList for ConsOut<T, N, U, V>
+impl<T, N, U, V> IsList for ConsOut<T, N, U, V>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
@@ -381,7 +347,12 @@ where
 {
     type Return = T;
 
-    fn returning(&self) -> Arc<dyn Fn(T) -> Return<T>>;
+    fn returning(self) -> Option<Arc<dyn FnOnce(T) -> Return<(), T>>> {
+        match self {
+            Self::Left { return_fn, .. } => Some(return_fn),
+            Self::Right { .. } => None,
+        }
+    }
 }
 
 impl<T, U> IOList for Cons<T, U>
@@ -390,58 +361,18 @@ where
     U: IOList,
 {
     type Return = U::Return;
+
+    fn returning(self) -> Option<Arc<dyn FnOnce(U::Return) -> Return<(), U::Return>>> {
+        self.tl.returning()
+    }
 }
 
-// impl<T: AnElem, N: ArrayLength<T>, U: IList> IntoIterator for ConsOut<T, N, U> {
-//     type Item = Elem;
-//     type IntoIter = IterCons<T, N, U>;
 
-//     fn into_iter(self) -> Self::IntoIter {
-//       self.cons.into_iter()
-//     }
-// }
 
-// impl<T: AnElem, N: ArrayLength<T>, U: IList> IList for ConsOut<T, N, U> {
-//     type Hd = T;
-//     type N = N;
-//     type Tl = U;
 
-//     fn is_empty(&self) -> bool {
-//         self.cons.is_empty()
-//     }
 
-//     fn hd(&self) -> GenericArray<Self::Hd, Self::N> {
-//         self.cons.hd()
-//     }
 
-//     fn tl(&self) -> Self::Tl {
-//         self.cons.tl()
-//     }
 
-//     fn cons<V: AnElem, M: ArrayLength<V>>(self, x: GenericArray<V, M>) -> Cons<V, M, Self>
-//     where
-//         Self: Sized,
-//     {
-//         Cons {
-//             hd: x,
-//             tl: self,
-//         }
-//     }
-
-//     fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError> {
-//       Ok(ConsOut {
-//         cons: IList::pop(PhantomData, stack)?,
-//       })
-//     }
-// }
-
-// impl<T: AnElem, N: ArrayLength<T>, U: IList> IOList for ConsOut<T, N, U> {
-//     type Return = T;
-// }
-
-// impl<T: AnElem, N: ArrayLength<T>, U: IOList> IOList for Cons<T, N, U> {
-//     type Return = <U as IOList>::Return;
-// }
 
 pub trait IsInstructionT: std::fmt::Debug {
     type In: IOList;
@@ -483,202 +414,4 @@ impl AnError for ConcatError {}
 //         Ok(lhs.into_iter().chain(rhs.into_iter()).collect())
 //     }
 // }
-
-// pub trait FromIntoIterator: IntoIterator + FromIterator<<Self as IntoIterator>::Item> {}
-
-// impl<T> IntoIterator for Singleton<T>
-// where
-//     T: AnElem + IntoIterator,
-// {
-//     type Item = <T as IntoIterator>::Item;
-//     type IntoIter = <T as IntoIterator>::IntoIter;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.t.into_iter()
-//     }
-// }
-
-// impl<T> FromIterator<<T as IntoIterator>::Item> for Singleton<T>
-// where
-//     T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
-// {
-//     fn from_iter<U>(iter: U) -> Self
-//     where
-//         U: IntoIterator<Item = <T as IntoIterator>::Item>,
-//     {
-//         Singleton {
-//             t: <T as FromIterator<<T as IntoIterator>::Item>>::from_iter(iter),
-//         }
-//     }
-// }
-
-// pub enum OrIter<T, U>
-// where
-//     T: AnElem + IntoIterator,
-//     U: Elems + IntoIterator,
-// {
-//     Left(<T as IntoIterator>::IntoIter),
-//     Right(<U as IntoIterator>::IntoIter),
-// }
-
-// pub enum OrIterItem<T, U>
-// where
-//     T: AnElem + IntoIterator,
-//     U: Elems + IntoIterator,
-// {
-//     Left(<T as IntoIterator>::Item),
-//     Right(<U as IntoIterator>::Item),
-// }
-
-// impl<T, U> Iterator for OrIter<T, U>
-// where
-//     T: AnElem + IntoIterator,
-//     U: Elems + IntoIterator,
-// {
-//     type Item = OrIterItem<T, U>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         match self {
-//             Self::Left(x) => x.next().map(|y| OrIterItem::Left(y)),
-//             Self::Right(x) => x.next().map(|y| OrIterItem::Right(y)),
-//         }
-//     }
-// }
-
-// impl<T, U> IntoIterator for Or<T, U>
-// where
-//     T: AnElem + IntoIterator,
-//     U: Elems + IntoIterator,
-// {
-//     type Item = OrIterItem<T, U>;
-//     type IntoIter = OrIter<T, U>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         match self {
-//             Self::Left(x) => OrIter::Left(x.into_iter()),
-//             Self::Right(x) => OrIter::Right(x.into_iter()),
-//         }
-//     }
-// }
-
-
-// pub struct ResultOrIterError<T> {
-//     result: Result<T, OrIterError>,
-// }
-
-// pub enum OrIterError {
-//     FromEmptyIter,
-
-//     AnElemError(AnElemError),
-
-//     MoreThanSingleton {
-//         // hd_elem: String,
-//         // other_elems: Vec<Elem>,
-//     },
-// }
-
-// impl<T> IntoIterator for ResultOrIterError<T>
-// where
-//     T: IntoIterator,
-// {
-//     type Item = <Option<T> as IntoIterator>::Item;
-//     type IntoIter = <Option<T> as IntoIterator>::IntoIter;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         match self.result {
-//             Ok(x) => Some(x).into_iter(),
-//             Err(_) => None.into_iter(),
-//         }
-//     }
-// }
-
-// // impl<t, u> fromiterator<oriteritem<t, u>> for resultoritererror<or<t, u>>
-// // where
-// //     T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
-// //     U: Elems + IntoIterator + FromIterator<<U as IntoIterator>::Item>,
-// // {
-// //     fn from_iter<V>(iter: V) -> Self
-// //     where
-// //         V: IntoIterator<Item = OrIterItem<T, U>>,
-// //     {
-// //         // let mut iter_mut = iter.into_iter();
-// //         // let opt_hd_elem = iter_mut.next();
-// //         // let rest = iter_mut.next();
-// //         // ResultOrIterError {
-// //         //     result: match (opt_hd_elem, rest) {
-// //         //         (None, _) => Err(OrIterError::FromEmptyIter),
-// //         //         (Some(hd_elem), Some(other_elems)) => Err(OrIterError::MoreThanSingleton {
-// //         //             // TODO: debug info
-// //         //             // hd_elem: hd_elem,
-// //         //             // other_elems: other_elems,
-// //         //         }),
-// //         //         (Some(OrIterItem::Left(hd_elem)), None) =>
-// //         //             match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
-// //         //                 Ok(x) => Ok(x),
-// //         //                 Err(e) => Err(OrIterError::AnElemError(e)),
-// //         //             },
-// //         //         (Some(OrIterItem::Right(hd_elem)), None) =>
-// //         //             match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
-// //         //                 Ok(x) => Ok(x),
-// //         //                 Err(e) => Err(OrIterError::AnElemError(e)),
-// //         //             },
-// //         //     },
-// //         // }
-// //     }
-// // }
-
-// // impl<T, U> FromIterator<OrIterItem<T, U>> for OrIterFrom<T, U>
-// // where
-// //     T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
-// //     U: Elems + IntoIterator + FromIterator<<U as IntoIterator>::Item>,
-// // {
-// //     fn from_iter<V>(iter: V) -> Self
-// //     where
-// //         V: IntoIterator<Item = OrIterItem<T, U>>,
-// //     {
-// //         let mut iter_mut = iter.into_iter();
-// //         let opt_hd_elem = iter_mut.next();
-// //         let rest = iter_mut.next();
-// //         match (opt_hd_elem, rest) {
-// //             (None, _) => OrIterFrom::Err(OrIterError::FromEmptyIter),
-// //             (Some(hd_elem), Some(other_elems)) => OrIterFrom::Err(OrIterError::MoreThanSingleton {
-// //                 // TODO: debug info
-// //                 // hd_elem: hd_elem,
-// //                 // other_elems: other_elems,
-// //             }),
-// //             (Some(OrIterItem::Left(hd_elem)), None) =>
-// //                 match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
-// //                     Ok(x) => OrIterFrom::Or(x),
-// //                     Err(e) => OrIterFrom::Err(OrIterError::AnElemError(e)),
-// //                 },
-// //             (Some(OrIterItem::Right(hd_elem)), None) =>
-// //                 match <Or<T, U> as AnElem>::from_elem(PhantomData, hd_elem) {
-// //                     Ok(x) => OrIterFrom::Or(x),
-// //                     Err(e) => OrIterFrom::Err(OrIterError::AnElemError(e)),
-// //                 },
-// //         }
-// //     }
-// // }
-
-
-
-// // impl<T, U> FromIterator<<T as IntoIterator>::Item> for Or<T, U>
-// // where
-// //     T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>,
-// //     U: Elems + IntoIterator<Item = <T as IntoIterator>::Item> + FromIterator<<T as IntoIterator>::Item>,
-// // {
-// //     fn from_iter<V>(iter: V) -> Self
-// //     where
-// //         V: IntoIterator<Item = <T as IntoIterator>::Item>,
-// //     {
-// //         _
-// //     }
-// // }
-
-
-
-
-
-
-
 
