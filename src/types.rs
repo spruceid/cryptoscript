@@ -297,7 +297,6 @@ impl IsInstruction for HashSha256 {
     }
 }
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Concat<T: AnElem> {
     t: PhantomData<T>,
