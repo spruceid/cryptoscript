@@ -13,9 +13,6 @@ use generic_array::sequence::GenericSequence;
 use generic_array::{arr, GenericArray, GenericArrayIter, ArrayLength};
 use serde_json::{Map, Value};
 
-// NEXT:
-// - Acheive parity between ElemList -> Elems/IList/IOList
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Singleton<T, N>
 where
@@ -38,7 +35,7 @@ pub trait Elems: Clone + Debug {
 
     // fn left(s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self;
     // fn right(s: PhantomData<Self>, x: Self::Tl) -> Self;
-    fn or<T, F: Fn(GenericArray<Self::Hd, Self::N>) -> T, G: Fn(Self::Tl) -> T>(&self, f: F, g: G) -> T;
+    fn or<T, F: Fn(&GenericArray<Self::Hd, Self::N>) -> T, G: Fn(&Self::Tl) -> T>(&self, f: F, g: G) -> T;
 
     // fn elem_symbols(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
     // fn to_elems(self) -> Elem;
@@ -47,11 +44,37 @@ pub trait Elems: Clone + Debug {
 
 pub trait IElems: Elems {}
 
-pub trait IOElems<'a>: Elems {
-    fn or_return<T, F, G>(&'a self, f: &mut F, g: &mut G) -> T
+
+#[derive(Clone, Debug)]
+pub struct Return<T: AnElem> {
+    return_value: Arc<Mutex<Option<T>>>,
+}
+
+impl<T: AnElem> Return<T> {
+    pub fn returning(&self, return_value: T) {
+        let mut lock = (*self.return_value).try_lock();
+        if let Ok(ref mut mutex) = lock {
+            **mutex = Some(return_value)
+        } else {
+            panic!("returning: TODO")
+        }
+    }
+
+    pub fn returned(&self) -> Option<T> {
+        let mut lock = (*self.return_value).try_lock();
+        if let Ok(ref mut mutex) = lock {
+            (**mutex).clone()
+        } else {
+            panic!("returned: TODO")
+        }
+    }
+}
+
+pub trait IOElems: Elems {
+    fn or_return<T, F, G>(&self, f: F, g: G) -> T
         where
-            F: Fn(GenericArray<Self::Hd, Self::N>, &'a mut Option<Self::Hd>) -> T,
-            G: Fn(Self::Tl) -> T;
+            F: Fn(&GenericArray<Self::Hd, Self::N>, &Return<Self::Hd>) -> T,
+            G: Fn(&Self::Tl) -> T;
 }
 
 
@@ -67,8 +90,8 @@ where
 
     // fn left(_s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self { Singleton { t: x, } }
     // fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self { x }
-    fn or<U, F: Fn(GenericArray<Self::Hd, Self::N>) -> U, G: Fn(Self::Tl) -> U>(&self, f: F, _g: G) -> U {
-        f(self.array.clone())
+    fn or<U, F: Fn(&GenericArray<Self::Hd, Self::N>) -> U, G: Fn(&Self::Tl) -> U>(&self, f: F, _g: G) -> U {
+        f(&self.array)
     }
 }
 
@@ -103,10 +126,10 @@ where
 
     // fn left(_s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self { Self::Left(x) }
     // fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self { Self::Right(x) }
-    fn or<V, F: Fn(GenericArray<Self::Hd, Self::N>) -> V, G: Fn(Self::Tl) -> V>(&self, f: F, g: G) -> V {
+    fn or<V, F: Fn(&GenericArray<Self::Hd, Self::N>) -> V, G: Fn(&Self::Tl) -> V>(&self, f: F, g: G) -> V {
         match self {
-            Self::Left(x) => f(x.clone()),
-            Self::Right(x) => g(x.clone()),
+            Self::Left(x) => f(x),
+            Self::Right(x) => g(x),
         }
     }
 }
@@ -121,16 +144,16 @@ where
 
 
 #[derive(Clone, Debug)]
-pub struct ReturnSingleton<'a, T, N>
+pub struct ReturnSingleton<T, N>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
 {
     singleton: Singleton<T, N>,
-    returning: Arc<Mutex<&'a mut Option<T>>>,
+    returning: Return<T>,
 }
 
-impl<'a, T, N> Elems for ReturnSingleton<'a, T, N>
+impl<T, N> Elems for ReturnSingleton<T, N>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
@@ -141,35 +164,28 @@ where
 
     // fn left(_s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self { Elems::left(PhantomData::<Singleton<T, N>>, x) }
     // fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self { Elems::left(PhantomData::<Singleton<T, N>>, x) }
-    fn or<U, F: Fn(GenericArray<Self::Hd, Self::N>) -> U, G: Fn(Self::Tl) -> U>(&self, f: F, g: G) -> U {
+    fn or<U, F: Fn(&GenericArray<Self::Hd, Self::N>) -> U, G: Fn(&Self::Tl) -> U>(&self, f: F, g: G) -> U {
         self.singleton.or(f, g)
     }
 }
 
-impl<'a, T, N> IOElems<'a> for ReturnSingleton<'a, T, N>
+impl<T, N> IOElems for ReturnSingleton<T, N>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
 {
-    fn or_return<U, F, G>(&'a self, f: &mut F, _g: &mut G) -> U
+    fn or_return<U, F, G>(&self, f: F, _g: G) -> U
     where
-        F: Fn(GenericArray<Self::Hd, Self::N>, &'a mut Option<Self::Hd>) -> U,
-        G: Fn(Self::Tl) -> U,
+        F: Fn(&GenericArray<Self::Hd, Self::N>, &Return<Self::Hd>) -> U,
+        G: Fn(&Self::Tl) -> U,
     {
-        let mut lock = (*self.returning).try_lock();
-        if let Ok(ref mut mutex) = lock {
-            f(self.singleton.array.clone(), mutex)
-        } else {
-            panic!("or_return ReturnSingleton: TODO")
-        }
-
-        // f(self.singleton.array.clone(), *self.returning)
+        f(&self.singleton.array, &self.returning)
     }
 }
 
 
 #[derive(Clone, Debug)]
-pub enum ReturnOr<'a, T, N, U>
+pub enum ReturnOr<T, N, U>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
@@ -177,12 +193,12 @@ where
 {
     Left {
         array: GenericArray<T, N>,
-        returning: Arc<Mutex<&'a mut Option<T>>>,
+        returning: Return<T>,
     },
     Right(U),
 }
 
-impl<'a, T, N, U> Elems for ReturnOr<'a, T, N, U>
+impl<T, N, U> Elems for ReturnOr<T, N, U>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
@@ -192,38 +208,30 @@ where
     type N = N;
     type Tl = U;
 
-    fn or<V, F: Fn(GenericArray<Self::Hd, Self::N>) -> V, G: Fn(Self::Tl) -> V>(&self, f: F, g: G) -> V {
+    fn or<V, F: Fn(&GenericArray<Self::Hd, Self::N>) -> V, G: Fn(&Self::Tl) -> V>(&self, f: F, g: G) -> V {
         match self {
-            Self::Left { array, .. } => f(array.clone()),
-            Self::Right(x) => g(*x),
+            Self::Left { array, .. } => f(array),
+            Self::Right(x) => g(x),
         }
     }
 }
 
-impl<'a, T, N, U> IOElems<'a> for ReturnOr<'a, T, N, U>
+impl<T, N, U> IOElems for ReturnOr<T, N, U>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
-    U: IOElems<'a, N = N>
+    U: IOElems<N = N>
 {
-    fn or_return<V, F, G>(&'a self, f: &mut F, g: &mut G) -> V
+    fn or_return<V, F, G>(&self, f: F, g: G) -> V
     where
-        F: Fn(GenericArray<Self::Hd, Self::N>, &'a mut Option<Self::Hd>) -> V,
-        G: Fn(Self::Tl) -> V,
+        F: Fn(&GenericArray<Self::Hd, Self::N>, &Return<Self::Hd>) -> V,
+        G: Fn(&Self::Tl) -> V,
     {
         match self {
             Self::Left { array, returning } => {
-                let mut lock = (*returning).try_lock();
-                if let Ok(ref mut mutex) = lock {
-                    f(array.clone(), mutex)
-                } else {
-                    panic!("or_return: TODO")
-                }
-
-                // let mut_returning = *returning.lock()?;
-                // f(array.clone(), mut_returning)
+                f(array, returning)
             },
-            Self::Right(x) => g(*x),
+            Self::Right(x) => g(x),
         }
     }
 }
@@ -324,32 +332,31 @@ where
 }
 
 
-pub trait IOList<'a>: IsList {
-    type Return: IOElems<'a>;
+pub trait IOList: IsList {
+    type Return: IOElems;
 }
 
-impl<'a, T, U> IOList<'a> for Cons<T, U>
+impl<T, U> IOList for Cons<T, U>
 where
     T: IElems,
-    U: IOList<'a>,
+    U: IOList,
 {
     type Return = U::Return;
 }
 
 
 #[derive(Clone, Debug)]
-pub struct ConsOut<'a, T, U>
+pub struct ConsOut<T, U>
 where
-    T: IOElems<'a>,
+    T: IOElems,
     U: IList,
 {
-    a: PhantomData<&'a ()>,
     cons: Cons<T, U>,
 }
 
-impl<'a, T, U> IsList for ConsOut<'a, T, U>
+impl<T, U> IsList for ConsOut<T, U>
 where
-    T: IOElems<'a>,
+    T: IOElems,
     U: IList
 {
     type Hd = T;
@@ -368,9 +375,9 @@ where
     }
 }
 
-impl<'a, T, U> IOList<'a> for ConsOut<'a, T, U>
+impl<T, U> IOList for ConsOut<T, U>
 where
-    T: IOElems<'a>,
+    T: IOElems,
     U: IList,
 {
     type Return = T;
@@ -382,207 +389,52 @@ where
 
 
 
-pub trait IsInstructionT<'a>: std::fmt::Debug {
-    type In: IOList<'a>;
+pub trait IsInstructionT: std::fmt::Debug {
+    type In: IOList;
     type Error: AnError;
 
-    // fn run(&self, x: Self::In) -> Result<<Self::In as IOList>::Return, Self::Error>;
-    fn run(&'a self, x: Self::In) -> Result<(), Self::Error>;
+    fn run(&self, x: Self::In) -> Result<(), Self::Error>;
 }
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// struct Concat<T: AnElem> {
-struct Concat<'a> {
-    a: PhantomData<&'a ()>,
+struct Concat {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ConcatError {}
 impl AnError for ConcatError {}
 
+// bytes, array, object
+impl IsInstructionT for Concat {
+    type In = ConsOut<ReturnOr<Vec<Value>,          U2,
+                      ReturnOr<Vec<Value>,          U2,
+               ReturnSingleton<Map<String, Value>,  U2>>>, Nil>;
+    type Error = ConcatError;
 
-// // bytes, string, array, object
-// impl<'a> IsInstructionT<'a> for Concat<'a> {
-//     type In = ConsOut<'a, ReturnOr<'a, Vec<Value>, U2, ReturnSingleton<'a, Map<String, Value>, U2>>, Nil>;
-//     type Error = ConcatError;
-
-//     // fn run(&self, x: Self::In) -> Result<<Self::In as IOList>::Return, Self::Error> {
-//     fn run(&'a self, x: Self::In) -> Result<(), Self::Error> {
-//         let y = x.hd();
-
-//         y.or_return(&mut |z, arc_return| {
-//                 let lhs = &z[0];
-//                 let rhs = &z[1];
-//                 *arc_return = Some(lhs.into_iter().chain(rhs.into_iter()).cloned().collect());
-//                 Ok(())
-//         },
-//                     &mut |z| {
-//                 z.or_return(&mut |w, arc_return| {
-//                 let lhs = &w[0];
-//                 let rhs = &w[1];
-//                 *arc_return = Some(lhs.into_iter().chain(rhs.into_iter()).map(|xy| (xy.0.clone(), xy.1.clone())).collect());
-//                 Ok(())
-//             },
-//                     &mut |_w| {
-//                 // let lhs = w.singleton.array[0];
-//                 // let rhs = w.singleton.array[1];
-//                 // **w.returning = Some(lhs.into_iter().chain(rhs.into_iter()).collect());
-//                 Ok(())
-//             })
-//         })
-
-//         // match y {
-//         //     Left([z1, z2]) => concat(z1, z2),
-
-//         //     ..
-//         // }
-
-//         // let lhs: Or<Vec<Value>, Singleton<Map<String, Value>>> = x.hd()[0].clone();
-//         // let rhs: Or<Vec<Value>, Singleton<Map<String, Value>>> = x.hd()[1].clone();
-//         // Ok(lhs.into_iter().chain(rhs.into_iter()).collect())
-//     }
-// }
-
-
-// // bytes, string, array, object
-// impl IsInstructionT for Concat<()> {
-//     type In = ConsOut<Or<Vec<Value>, U2, Singleton<Map<String, Value>, U2>>, U2, Singleton<(), U0>, Nil>;
-//     type Error = ConcatError;
-
-//     fn run(&self, x: Self::In) -> Result<<Self::In as IOList>::Return, Self::Error> {
-//         let y = x.hd();
-//         // match y {
-//         //     Left([z1, z2]) => concat(z1, z2),
-
-//         //     ..
-//         // }
-
-//         // let lhs: Or<Vec<Value>, Singleton<Map<String, Value>>> = x.hd()[0].clone();
-//         // let rhs: Or<Vec<Value>, Singleton<Map<String, Value>>> = x.hd()[1].clone();
-//         // Ok(lhs.into_iter().chain(rhs.into_iter()).collect())
-//     }
-// }
-
-
-
-
-
-// impl<T: AnElem + IntoIterator + FromIterator<<T as IntoIterator>::Item>> IsInstructionT for Concat<T> {
-//     type In = ConsOut<T, U2, Nil>;
-//     type Error = ConcatError;
-
-//     fn run(&self, x: Self::In) -> Result<<Self::In as IOList>::Return, Self::Error> {
-//         let lhs = x.hd()[0].clone();
-//         let rhs = x.hd()[1].clone();
-//         Ok(lhs.into_iter().chain(rhs.into_iter()).collect())
-//     }
-// }
-
-
-// #[derive(Clone)]
-// pub enum ConsOut<T, N, U, V>
-// where
-//     T: AnElem,
-//     N: ArrayLength<T> + Debug,
-//     U: Elems<N = N>,
-//     V: IList,
-// {
-//     Left {
-//         return_fn: Arc<dyn FnOnce(T) -> Return<(), T>>,
-//         hd: Singleton<T, N>,
-//         tl: V,
-//     },
-//     Right {
-//         hd: U,
-//         tl: V,
-//     }
-// }
-
-// impl<T, N, U, V> IsList for ConsOut<T, N, U, V>
-// where
-//     T: AnElem,
-//     N: ArrayLength<T> + Debug,
-//     U: Elems<N = N>,
-//     V: IList,
-// {
-//     type Hd = Or<T, N, U>;
-//     type Tl = V;
-
-//     fn is_empty(&self) -> bool {
-//         false
-//     }
-
-//     fn hd(self) -> Self::Hd {
-//         match self {
-//             Self::Left { hd, .. } => Or::Left(hd.t),
-//             Self::Right { hd, .. } => Or::Right(hd),
-//         }
-//     }
-
-//     fn tl(self) -> Self::Tl {
-//         match self {
-//             Self::Left { tl, .. } => tl,
-//             Self::Right { tl, .. } => tl,
-//         }
-//     }
-// }
-
-// impl<T, N, U, V> IOList for ConsOut<T, N, U, V>
-// where
-//     T: AnElem,
-//     N: ArrayLength<T> + Debug,
-//     U: Elems<N = N>,
-//     V: IList,
-// {
-//     type Return = T;
-
-//     // fn returning(self) -> Option<Arc<dyn FnOnce(T) -> Return<(), T>>> {
-//     //     match self {
-//     //         Self::Left { return_fn, .. } => Some(return_fn),
-//     //         Self::Right { .. } => None,
-//     //     }
-//     // }
-// }
-
-// impl<T, U> IOList for Cons<T, U>
-// where
-//     T: Elems,
-//     U: IOList,
-// {
-//     type Return = U::Return;
-
-//     // fn returning(self) -> Option<Arc<dyn FnOnce(U::Return) -> Return<(), U::Return>>> {
-//     //     self.tl.returning()
-//     // }
-// }
-
-
-
-
-
-
-
-
-
-
-// /// return_value is private, but get_return_value can be used to extract it
-// #[derive(Clone, Debug, PartialEq, Eq)]
-// pub struct Return<T, U: AnElem> {
-//     for_instruction: PhantomData<T>,
-//     return_value: U,
-// }
-
-// impl<T, U: AnElem> Return<T, U> {
-//     pub fn get_return_value(self) -> U {
-//         self.return_value
-//     }
-// }
-
-
-
-
-
-
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let y = x.hd();
+        match y {
+            ReturnOr::Left { array, returning } => {
+                let lhs = &array[0];
+                let rhs = &array[1];
+                returning.returning(lhs.into_iter().chain(rhs.into_iter()).cloned().collect());
+                Ok(())
+            },
+            ReturnOr::Right(ReturnOr::Left { array, returning }) => {
+                let lhs = &array[0];
+                let rhs = &array[1];
+                returning.returning(lhs.into_iter().chain(rhs.into_iter()).cloned().collect());
+                Ok(())
+            },
+            ReturnOr::Right(ReturnOr::Right(ReturnSingleton { singleton, returning })) => {
+                let lhs = &singleton.array[0];
+                let rhs = &singleton.array[1];
+                returning.returning(lhs.into_iter().chain(rhs.into_iter()).map(|xy| (xy.0.clone(), xy.1.clone())).collect());
+                Ok(())
+            },
+        }
+    }
+}
 
 // Cons<Or<U, <Singleton<T>>, Nil>
 
