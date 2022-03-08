@@ -2,6 +2,7 @@ use crate::elem::{Elem, AnElem, AnElemError, ElemSymbol};
 use crate::stack::{Stack, StackError};
 use crate::types::{Empty, AnError, Nil};
 
+use std::cmp;
 use std::iter::{FromIterator};
 use std::marker::PhantomData;
 use std::fmt::Debug;
@@ -10,8 +11,15 @@ use std::sync::{Arc, Mutex};
 use enumset::EnumSet;
 use generic_array::typenum::{U0, U1, U2};
 use generic_array::sequence::GenericSequence;
+use generic_array::functional::FunctionalSequence;
 use generic_array::{arr, GenericArray, GenericArrayIter, ArrayLength};
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
+
+// NEXT:
+// - finish migrating instruction implementations from elem to IsInstructionT
+// - migrate pop-stack from IsInstruction
+// - delete old IsInstruction
+// - add typing info as with pop-stack
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Singleton<T, N>
@@ -51,6 +59,7 @@ pub struct Return<T: AnElem> {
 }
 
 impl<T: AnElem> Return<T> {
+    // TODO: throw error if try_lock fails
     pub fn returning(&self, return_value: T) {
         let mut lock = (*self.return_value).try_lock();
         if let Ok(ref mut mutex) = lock {
@@ -60,6 +69,7 @@ impl<T: AnElem> Return<T> {
         }
     }
 
+    // TODO: throw error if try_lock fails
     pub fn returned(&self) -> Option<T> {
         let mut lock = (*self.return_value).try_lock();
         if let Ok(ref mut mutex) = lock {
@@ -140,6 +150,60 @@ where
     N: ArrayLength<T> + Debug,
     U: IElems<N = N>,
 {}
+
+// TODO: AnElem: &self -> AllElems<U1>
+type AllElems<N> =
+    Or<(), N,
+    Or<bool, N,
+    Or<Number, N,
+    Or<Vec<u8>, N,
+    Or<String, N,
+    Or<Vec<Value>, N,
+    Or<Map<String, Value>, N,
+    Singleton<Value, N>>>>>>>>;
+
+fn all_elems_untyped<N>(x: &AllElems<N>) -> GenericArray<Elem, N>
+where
+    N: Debug +
+    ArrayLength<()> +
+    ArrayLength<bool> +
+    ArrayLength<Number> +
+    ArrayLength<Vec<u8>> +
+    ArrayLength<String> +
+    ArrayLength<Vec<Value>> +
+    ArrayLength<Map<String, Value>> +
+    ArrayLength<Value> +
+    ArrayLength<Elem>,
+{
+    match x {
+        Or::Left(array) => {
+            array.map(|_x| Elem::Unit)
+        },
+        Or::Right(Or::Left(array)) => {
+            array.map(|&x| Elem::Bool(x))
+        },
+        Or::Right(Or::Right(Or::Left(array))) => {
+            array.map(|x| Elem::Number(x.clone()))
+        },
+        Or::Right(Or::Right(Or::Right(Or::Left(array)))) => {
+            array.map(|x| Elem::Bytes(x.clone()))
+        },
+        Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))) => {
+            array.map(|x| Elem::String(x.clone()))
+        },
+        Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array)))))) => {
+            array.map(|x| Elem::Array(x.clone()))
+        },
+        Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))))) => {
+            array.map(|x| Elem::Object(x.clone()))
+        },
+        Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Singleton { array }))))))) => {
+            array.map(|x| Elem::Json(x.clone()))
+        },
+    }
+}
+
+
 
 
 
@@ -435,21 +499,19 @@ impl IsInstructionT for Concat {
                 let lhs = &array[0];
                 let rhs = &array[1];
                 returning.returning(lhs.into_iter().chain(rhs.into_iter()).cloned().collect());
-                Ok(())
             },
             ReturnOr::Right(ReturnOr::Left { array, returning }) => {
                 let lhs = &array[0];
                 let rhs = &array[1];
                 returning.returning(lhs.into_iter().chain(rhs.into_iter()).cloned().collect());
-                Ok(())
             },
             ReturnOr::Right(ReturnOr::Right(ReturnSingleton { singleton, returning })) => {
                 let lhs = &singleton.array[0];
                 let rhs = &singleton.array[1];
                 returning.returning(lhs.into_iter().chain(rhs.into_iter()).map(|xy| (xy.0.clone(), xy.1.clone())).collect());
-                Ok(())
             },
         }
+        Ok(())
     }
 }
 
@@ -553,87 +615,133 @@ impl IsInstructionT for Lookup {
 }
 
 
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct UnpackJson<T: AnElem> {
-//    t: PhantomData<T>,
-//}
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct UnpackJsonError {}
-//impl AnError for UnpackJsonError {}
+// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// struct UnpackJson<T: AnElem> {
+//     t: PhantomData<T>,
+// }
+// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// struct UnpackJsonError {}
+// impl AnError for UnpackJsonError {}
 
 
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct StringToBytes {}
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct StringToBytesError {}
-//impl AnError for StringToBytesError {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StringToBytes {}
+// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// struct StringToBytesError {}
+// impl AnError for StringToBytesError {}
+
+impl IsInstructionT for StringToBytes {
+    type In = ConsOut<ReturnSingleton<Vec<u8>, U0>, Cons<Singleton<String, U1>, Nil>>;
+    type Error = Empty;
+
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let in_str = &x.clone().tl().hd().array[0];
+        returning.returning(in_str.clone().into_bytes());
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckLe {}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CheckLeError {
+    lhs: Elem,
+    rhs: Elem,
+}
+impl AnError for CheckLeError {}
+
+impl IsInstructionT for CheckLe {
+    type In = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
+    type Error = CheckLeError;
+
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let y = &x.clone().tl().hd();
+        let array = all_elems_untyped(y);
+        let lhs = array[0].clone();
+        let rhs = array[1].clone();
+        let cmp_result = lhs.partial_cmp(&rhs)
+            .ok_or_else(|| CheckLeError {
+                lhs: lhs,
+                rhs: rhs
+        })?;
+        let result = match cmp_result {
+            cmp::Ordering::Less => true,
+            cmp::Ordering::Equal => true,
+            cmp::Ordering::Greater => false,
+        };
+        returning.returning(result);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckLt {}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CheckLtError {
+    lhs: Elem,
+    rhs: Elem,
+}
+impl AnError for CheckLtError {}
+
+impl IsInstructionT for CheckLt {
+    type In = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
+    type Error = CheckLtError;
+
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let y = &x.clone().tl().hd();
+        let array = all_elems_untyped(y);
+        let lhs = array[0].clone();
+        let rhs = array[1].clone();
+        let cmp_result = lhs.partial_cmp(&rhs)
+            .ok_or_else(|| CheckLtError {
+                lhs: lhs,
+                rhs: rhs
+        })?;
+        let result = match cmp_result {
+            cmp::Ordering::Less => true,
+            _ => false,
+        };
+        returning.returning(result);
+        Ok(())
+    }
+}
 
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckEq {}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CheckEqError {
+    lhs: Elem,
+    rhs: Elem,
+}
+impl AnError for CheckEqError {}
 
-//// TODO: POLYMORPHIC W/ ANY: PERHAPS Elem: AnElem ??
-////
-//// ideas:
-//// 1. use macros when it's a trait
-//// 2. gradual typing: allow Elem to be AnElem
+impl IsInstructionT for CheckEq {
+    type In = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
+    type Error = CheckEqError;
 
-
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct CheckLe {}
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct CheckLeError {}
-//impl AnError for CheckLeError {}
-
-
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct CheckLt {}
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct CheckLtError {}
-//impl AnError for CheckLtError {}
-
-
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct CheckEq {}
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct CheckEqError {}
-//impl AnError for CheckEqError {}
-
-
-
-
-
-    // pub fn check_le(self, other: Self) -> Result<Self, ElemError> {
-    //     let result = match self.partial_cmp(&other)
-    //         .ok_or_else(|| ElemError::CheckLeIncomparableTypes {
-    //             lhs: self.symbol_str(),
-    //             rhs: other.symbol_str() })? {
-    //                 cmp::Ordering::Less => true,
-    //                 cmp::Ordering::Equal => true,
-    //                 cmp::Ordering::Greater => false,
-    //     };
-    //     Ok(Self::Bool(result))
-    // }
-
-    // pub fn check_lt(self, other: Self) -> Result<Self, ElemError> {
-    //     let result = match self.partial_cmp(&other)
-    //         .ok_or_else(|| ElemError::CheckLtIncomparableTypes {
-    //             lhs: self.symbol_str(),
-    //             rhs: other.symbol_str() })? {
-    //                 cmp::Ordering::Less => true,
-    //                 _ => false,
-    //     };
-    //     Ok(Self::Bool(result))
-    // }
-
-    // pub fn check_eq(self, other: Self) -> Result<Self, ElemError> {
-    //     let result = match self.partial_cmp(&other)
-    //         .ok_or_else(|| ElemError::CheckEqIncomparableTypes {
-    //             lhs: self.symbol_str(),
-    //             rhs: other.symbol_str() })? {
-    //                 cmp::Ordering::Equal => true,
-    //                 _ => false,
-    //     };
-    //     Ok(Self::Bool(result))
-    // }
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let y = &x.clone().tl().hd();
+        let array = all_elems_untyped(y);
+        let lhs = array[0].clone();
+        let rhs = array[1].clone();
+        let cmp_result = lhs.partial_cmp(&rhs)
+            .ok_or_else(|| CheckEqError {
+                lhs: lhs,
+                rhs: rhs
+        })?;
+        let result = match cmp_result {
+            cmp::Ordering::Equal => true,
+            _ => false,
+        };
+        returning.returning(result);
+        Ok(())
+    }
+}
 
     // fn slice_generic<T: Clone + IntoIterator +
     //   std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(offset: Number,
@@ -741,13 +849,6 @@ impl IsInstructionT for Lookup {
     //               non_json: non_json.symbol_str(),
     //               elem_symbol: From::from(elem_symbol),
     //         }),
-    //     }
-    // }
-
-    // pub fn string_to_bytes(self) -> Result<Self, ElemError> {
-    //     match self {
-    //         Self::String(x) => Ok(Self::Bytes(x.into_bytes())),
-    //         other => Err(ElemError::StringToBytesUnsupportedType(other.symbol_str())),
     //     }
     // }
 
