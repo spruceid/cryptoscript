@@ -3,10 +3,12 @@ use crate::stack::{Stack, StackError};
 use crate::types::{Empty, AnError, Nil};
 
 use std::cmp;
-use std::iter::{FromIterator};
+use std::convert::TryFrom;
+use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
+use std::string::FromUtf8Error;
 
 use enumset::EnumSet;
 use generic_array::typenum::{U0, U1, U2};
@@ -14,6 +16,7 @@ use generic_array::sequence::GenericSequence;
 use generic_array::functional::FunctionalSequence;
 use generic_array::{arr, GenericArray, GenericArrayIter, ArrayLength};
 use serde_json::{Map, Number, Value};
+use thiserror::Error;
 
 // NEXT:
 // - finish migrating instruction implementations from elem to IsInstructionT
@@ -465,29 +468,26 @@ pub trait IsInstructionT: std::fmt::Debug {
 // #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 // pub enum Instruction {
 //     Restack(Restack),
-//
-//     CheckLe,
-//     CheckLt,
-//     CheckEq,
-//     Slice,
-//     Index,
-//     ToJson,
-//     UnpackJson(ElemSymbol),
-//     StringToBytes,
 // }
 
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Concat {
+pub struct Concat {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ConcatError {}
+pub struct ConcatError {}
 impl AnError for ConcatError {}
 
+// TODO: add string!
+// (Self::String(x), Self::String(y)) => {
+//     Ok(Self::String(String::from_utf8(Self::concat_generic(Vec::from(x.clone()), Vec::from(y.clone())))
+//                     .map_err(|_| ElemError::ConcatInvalidUTF8 { lhs: x, rhs: y })?))
+// },
+//
 // bytes, array, object
 impl IsInstructionT for Concat {
-    type In = ConsOut<ReturnOr<Vec<Value>,          U2,
+    type In = ConsOut<ReturnOr<Vec<u8>,             U2,
                       ReturnOr<Vec<Value>,          U2,
                ReturnSingleton<Map<String, Value>,  U2>>>, Nil>;
     type Error = ConcatError;
@@ -516,9 +516,9 @@ impl IsInstructionT for Concat {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct AssertTrue {}
+pub struct AssertTrue {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct AssertTrueError {}
+pub struct AssertTrueError {}
 impl AnError for AssertTrueError {}
 
 impl IsInstructionT for AssertTrue {
@@ -539,7 +539,7 @@ impl IsInstructionT for AssertTrue {
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Push<T: AnElem> {
+pub struct Push<T: AnElem> {
     push: T,
 }
 
@@ -556,9 +556,9 @@ impl<T: AnElem> IsInstructionT for Push<T> {
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct HashSha256 {}
+pub struct HashSha256 {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct HashSha256Error {}
+pub struct HashSha256Error {}
 impl AnError for HashSha256Error {}
 
 impl IsInstructionT for HashSha256 {
@@ -574,24 +574,200 @@ impl IsInstructionT for HashSha256 {
 }
 
 
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct Slice {}
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct SliceError {}
-//impl AnError for SliceError {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Slice {}
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SliceError {
+    OffsetNotU64(Number),
 
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct Index {}
-//#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-//struct IndexError {}
-//impl AnError for IndexError {}
+    LengthNotU64(Number),
+
+    Overflow {
+        offset: Number,
+        length: Number,
+    },
+
+    TooShort {
+        offset: usize,
+        length: usize,
+        iterable: String,
+    },
+
+    FromUtf8Error(FromUtf8Error),
+}
+
+impl From<FromUtf8Error> for SliceError {
+    fn from(error: FromUtf8Error) -> Self {
+        Self::FromUtf8Error(error)
+    }
+}
+
+impl AnError for SliceError {}
+
+// bytes, string, array, object
+impl IsInstructionT for Slice {
+    type In = ConsOut<ReturnOr<Vec<u8>,             U1,
+                      ReturnOr<String,              U1,
+                      ReturnOr<Vec<Value>,          U1,
+               ReturnSingleton<Map<String, Value>,  U1>>>>,
+                Cons<Singleton<Number,              U2>, Nil>>;
+    type Error = SliceError;
+
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let y = x.clone().hd();
+        let offset_length = x.clone().tl().hd().array;
+        let offset = &offset_length[0];
+        let length = &offset_length[1];
+        let u_offset = offset.as_u64()
+            .ok_or_else(|| SliceError::OffsetNotU64(offset.clone()))
+            .and_then(|x| usize::try_from(x).map_err(|_| SliceError::Overflow { offset: offset.clone(), length: length.clone() }))?;
+        let u_length = length.as_u64()
+            .ok_or_else(|| SliceError::LengthNotU64(length.clone()))
+            .and_then(|x| usize::try_from(x).map_err(|_| SliceError::Overflow { offset: offset.clone(), length: length.clone() }))?;
+        let u_offset_plus_length = u_offset.checked_add(u_length)
+            .ok_or_else(|| SliceError::Overflow { offset: offset.clone(), length: length.clone() })?;
+        match y.clone() {
+            ReturnOr::Left { array, returning } => {
+                let iterable = &array[0];
+                if iterable.clone().into_iter().count() < u_offset_plus_length {
+                    Err(())
+                } else {
+                    returning.returning(iterable.into_iter().skip(u_offset).take(u_length).copied().collect());
+                    Ok(())
+                }
+            },
+            ReturnOr::Right(ReturnOr::Left { array, returning }) => {
+                let iterable = &array[0];
+                if iterable.len() < u_offset_plus_length {
+                    Err(())
+                } else {
+                    returning.returning(String::from_utf8(Vec::from(iterable.clone()).into_iter().skip(u_offset).take(u_length).collect())?);
+                    Ok(())
+                }
+            },
+            ReturnOr::Right(ReturnOr::Right(ReturnOr::Left { array, returning })) => {
+                let iterable = &array[0];
+                if iterable.clone().into_iter().count() < u_offset_plus_length {
+                    Err(())
+                } else {
+                    returning.returning(iterable.into_iter().skip(u_offset).take(u_length).cloned().collect());
+                    Ok(())
+                }
+            },
+            ReturnOr::Right(ReturnOr::Right(ReturnOr::Right(ReturnSingleton { singleton: Singleton { array }, returning }))) => {
+                let iterable = &array[0];
+                if iterable.clone().into_iter().count() < u_offset_plus_length {
+                    Err(())
+                } else {
+                    returning.returning(iterable.into_iter().skip(u_offset).take(u_length).map(|xy| (xy.0.clone(), xy.1.clone())).collect());
+                    Ok(())
+                }
+            },
+        }.map_err(|_e| {
+            SliceError::TooShort {
+                offset: u_offset,
+                length: u_length,
+                // TODO: better error
+                iterable: format!("{:?}", y),
+            }
+        })
+    }
+}
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Lookup {}
+pub struct Index {}
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum IndexError {
+    #[error("Index: index not valid u64: {0:?}")]
+    IndexNotU64(Number),
+
+    #[error("Index: index not valid usize: {0:?}")]
+    Overflow(Number),
+
+    #[error("Index: iterable: {iterable:?}\nis too short for index: {index:?}")]
+    TooShort {
+        index: usize,
+        iterable: String,
+    },
+}
+impl AnError for IndexError {}
+
+// bytes, array, object
+impl IsInstructionT for Index {
+    type In = ConsOut<ReturnSingleton<Value,                U0>,
+                              Cons<Or<Vec<Value>,           U2,
+                            Singleton<Map<String, Value>,   U2>>,
+                       Cons<Singleton<Number,               U1>, Nil>>>;
+    type Error = IndexError;
+
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let y = x.clone().tl().hd();
+        let index = &x.clone().tl().tl().hd().array[0];
+        let u_index = index.as_u64()
+            .ok_or_else(|| IndexError::IndexNotU64(index.clone()))
+            .and_then(|x| usize::try_from(x).map_err(|_| IndexError::Overflow(index.clone())))?;
+        let result = match y.clone() {
+            Or::Left(array) => {
+                array[0]
+                    .clone()
+                    .into_iter()
+                    .skip(u_index)
+                    .next()
+            },
+            Or::Right(Singleton { array }) => {
+                array[0]
+                    .clone()
+                    .into_iter()
+                    .skip(u_index)
+                    .next()
+                    .map(|(_x, y)| y)
+            },
+        }.ok_or_else(|| {
+            IndexError::TooShort {
+                index: u_index,
+                // TODO: better error
+                iterable: format!("{:?}", y),
+            }
+        })?;
+        returning.returning(result);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ToJson {}
+#[derive(Clone, Debug)]
+pub struct ToJsonError {
+    input: Elem,
+    error: Arc<serde_json::Error>,
+}
+impl AnError for ToJsonError {}
+
+impl IsInstructionT for ToJson {
+    type In = ConsOut<ReturnSingleton<Value, U0>, Cons<AllElems<U1>, Nil>>;
+    type Error = ToJsonError;
+
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let y = &x.clone().tl().hd();
+        let array = all_elems_untyped(y);
+        let z = array[0].clone();
+        returning.returning(serde_json::to_value(z.clone())
+                            .map_err(move |e| ToJsonError {
+                                input: z,
+                                error: Arc::new(e),
+        })?);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Lookup {}
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct LookupError {
+pub struct LookupError {
     key: String,
     map: Map<String, Value>,
 }
@@ -615,20 +791,71 @@ impl IsInstructionT for Lookup {
 }
 
 
-// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// struct UnpackJson<T: AnElem> {
-//     t: PhantomData<T>,
-// }
-// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// struct UnpackJsonError {}
-// impl AnError for UnpackJsonError {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct UnpackJson<T: AnElem> {
+    t: PhantomData<T>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct UnpackJsonError {}
+impl AnError for UnpackJsonError {}
+
+// TODO: implement for rest of types
+trait AJsonElem: AnElem {
+    fn to_value(&self) -> Value;
+    fn from_value(t: PhantomData<Self>, x: Value) -> Option<Self>;
+}
+
+impl AJsonElem for () {
+    fn to_value(&self) -> Value {
+        Value::Null
+    }
+
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+        match x {
+            Value::Null => Some(()),
+            _ => None,
+        }
+    }
+}
+
+    // pub fn unpack_json(self, elem_symbol: ElemSymbol) -> Result<Self, ElemError> {
+    //     match (self, elem_symbol) {
+    //         (Self::Json(serde_json::Value::Null), ElemSymbol::Unit) => Ok(Self::Unit),
+    //         (Self::Json(serde_json::Value::Bool(x)), ElemSymbol::Bool) => Ok(Self::Bool(x)),
+    //         (Self::Json(serde_json::Value::Number(x)), ElemSymbol::Number) => Ok(Self::Number(x)),
+    //         (Self::Json(serde_json::Value::String(x)), ElemSymbol::String) => Ok(Self::String(x)),
+    //         (Self::Json(serde_json::Value::Array(x)), ElemSymbol::Array) => Ok(Self::Array(x)),
+    //         (Self::Json(serde_json::Value::Object(x)), ElemSymbol::Object) => Ok(Self::Object(x)),
+    //         (Self::Json(json), elem_symbol) => Err(ElemError::UnpackJsonUnsupportedSymbol {
+    //           json: json,
+    //           elem_symbol: From::from(elem_symbol),
+    //         }),
+    //         (non_json, _) => Err(ElemError::UnpackJsonUnexpectedType {
+    //               non_json: non_json.symbol_str(),
+    //               elem_symbol: From::from(elem_symbol),
+    //         }),
+    //     }
+    // }
+
+impl<T: AJsonElem> IsInstructionT for UnpackJson<T> {
+    type In = ConsOut<ReturnSingleton<T, U0>,
+                       Cons<Singleton<Value, U1>, Nil>>;
+    type Error = UnpackJsonError;
+
+    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let json = &x.clone().tl().hd().array[0];
+        let result =
+            AJsonElem::from_value(PhantomData::<T>, json.clone())
+            .ok_or_else(|| UnpackJsonError {})?;
+        returning.returning(result);
+        Ok(())
+    }
+}
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct StringToBytes {}
-// #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// struct StringToBytesError {}
-// impl AnError for StringToBytesError {}
+pub struct StringToBytes {}
 
 impl IsInstructionT for StringToBytes {
     type In = ConsOut<ReturnSingleton<Vec<u8>, U0>, Cons<Singleton<String, U1>, Nil>>;
@@ -643,9 +870,9 @@ impl IsInstructionT for StringToBytes {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct CheckLe {}
+pub struct CheckLe {}
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct CheckLeError {
+pub struct CheckLeError {
     lhs: Elem,
     rhs: Elem,
 }
@@ -677,9 +904,9 @@ impl IsInstructionT for CheckLe {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct CheckLt {}
+pub struct CheckLt {}
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct CheckLtError {
+pub struct CheckLtError {
     lhs: Elem,
     rhs: Elem,
 }
@@ -711,9 +938,9 @@ impl IsInstructionT for CheckLt {
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct CheckEq {}
+pub struct CheckEq {}
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct CheckEqError {
+pub struct CheckEqError {
     lhs: Elem,
     rhs: Elem,
 }
@@ -742,115 +969,6 @@ impl IsInstructionT for CheckEq {
         Ok(())
     }
 }
-
-    // fn slice_generic<T: Clone + IntoIterator +
-    //   std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(offset: Number,
-    //                                                                  length: Number,
-    //                                                                  iterable: T,
-    //                                                                  elem_symbol: ElemSymbol) ->
-    //     Result<T, ElemError> {
-    //     let u_offset = offset.as_u64()
-    //         .ok_or_else(|| ElemError::SliceOffsetNotU64(offset.clone()))
-    //         .and_then(|x| usize::try_from(x).map_err(|_| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() }))?;
-    //     let u_length = length.as_u64()
-    //         .ok_or_else(|| ElemError::SliceLengthNotU64(length.clone()))
-    //         .and_then(|x| usize::try_from(x).map_err(|_| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() }))?;
-    //     let u_offset_plus_length = u_offset.checked_add(u_length)
-    //         .ok_or_else(|| ElemError::SliceOverflow { offset: offset.clone(), length: length.clone() })?;
-    //     if iterable.clone().into_iter().count() < u_offset_plus_length {
-    //         Err(ElemError::SliceTooShort {
-    //             offset: u_offset,
-    //             length: u_length,
-    //             iterable: From::from(elem_symbol),
-    //         })
-    //     } else {
-    //         Ok(iterable.into_iter().skip(u_offset).take(u_length).collect())
-    //     }
-    // }
-
-    // pub fn slice(maybe_offset: Self, maybe_length: Self, maybe_iterable: Self) -> Result<Self, ElemError> {
-    //     match (maybe_offset, maybe_length, maybe_iterable) {
-    //         (Self::Number(offset), Self::Number(length), Self::Bytes(iterator)) =>
-    //             Ok(Self::Bytes(Self::slice_generic(offset, length, iterator, ElemSymbol::Bytes)?)),
-    //         (Self::Number(offset), Self::Number(length), Self::String(iterator)) => {
-    //             let iterator_vec = Vec::from(iterator.clone());
-    //             Ok(Self::String(String::from_utf8(Self::slice_generic(offset.clone(), length.clone(), iterator_vec, ElemSymbol::String)?)
-    //                     .map_err(|_| ElemError::SliceInvalidUTF8 { offset: offset, length: length, iterator: iterator })?))
-    //             },
-    //         (Self::Number(offset), Self::Number(length), Self::Array(iterator)) =>
-    //             Ok(Self::Array(Self::slice_generic(offset, length, iterator, ElemSymbol::Number)?)),
-    //         (Self::Number(offset), Self::Number(length), Self::Object(iterator)) =>
-    //             Ok(Self::Object(Self::slice_generic(offset, length, iterator, ElemSymbol::Object)?)),
-    //         (maybe_not_offset, maybe_not_length, maybe_not_iterable) => {
-    //             Err(ElemError::SliceUnsupportedTypes {
-    //                 maybe_not_offset: maybe_not_offset.symbol_str(),
-    //                 maybe_not_length: maybe_not_length.symbol_str(),
-    //                 maybe_not_iterable: maybe_not_iterable.symbol_str(),
-    //             })
-    //         }
-    //     }
-    // }
-
-    // fn index_generic<T: Clone + IntoIterator +
-    //     std::iter::FromIterator<<T as std::iter::IntoIterator>::Item>>(index: Number,
-    //                                                                    iterable: T,
-    //                                                                    elem_symbol: ElemSymbol) ->
-    //   Result<<T as std::iter::IntoIterator>::Item, ElemError> {
-    //     let u_index: usize = index.as_u64()
-    //         .ok_or_else(|| ElemError::IndexNotU64(index.clone()))
-    //         .and_then(|x| usize::try_from(x).map_err(|_| ElemError::IndexOverflow(index.clone())))?;
-    //     if iterable.clone().into_iter().count() <= u_index {
-    //         return Err(ElemError::IndexTooShort {
-    //             index: u_index,
-    //             iterable: From::from(elem_symbol),
-    //         })
-    //     } else {
-    //         match iterable.into_iter().skip(u_index).next() {
-    //             None => Err(ElemError::IndexTooShort { index: u_index, iterable: From::from(elem_symbol) }),
-    //             Some(x) => Ok(x),
-    //         }
-    //     }
-    // }
-
-    // pub fn index(self, maybe_iterable: Self) -> Result<Self, ElemError> {
-    //     match (self, maybe_iterable) {
-    //         // (Self::Number(index), Self::Bytes(iterator)) =>
-    //         //     Ok(Self::Bytes(vec![Self::index_generic(index, iterator, ElemSymbol::Bytes)?])),
-    //         (Self::Number(index), Self::Array(iterator)) =>
-    //             Ok(Self::Json(Self::index_generic(index, iterator, ElemSymbol::Json)?)),
-    //         (Self::Number(index), Self::Object(iterator)) =>
-    //             Ok(Self::Json(Self::index_generic(index, iterator, ElemSymbol::Object)?.1)),
-    //         (maybe_not_index, maybe_not_iterable) => {
-    //             Err(ElemError::IndexUnsupportedTypes {
-    //                 maybe_not_index: maybe_not_index.symbol_str(),
-    //                 maybe_not_iterable: maybe_not_iterable.symbol_str(),
-    //             })
-    //         }
-    //     }
-    // }
-
-    // pub fn to_json(self) -> Result<Self, ElemError> {
-    //     Ok(Self::Json(serde_json::to_value(self)?))
-    // }
-
-    // pub fn unpack_json(self, elem_symbol: ElemSymbol) -> Result<Self, ElemError> {
-    //     match (self, elem_symbol) {
-    //         (Self::Json(serde_json::Value::Null), ElemSymbol::Unit) => Ok(Self::Unit),
-    //         (Self::Json(serde_json::Value::Bool(x)), ElemSymbol::Bool) => Ok(Self::Bool(x)),
-    //         (Self::Json(serde_json::Value::Number(x)), ElemSymbol::Number) => Ok(Self::Number(x)),
-    //         (Self::Json(serde_json::Value::String(x)), ElemSymbol::String) => Ok(Self::String(x)),
-    //         (Self::Json(serde_json::Value::Array(x)), ElemSymbol::Array) => Ok(Self::Array(x)),
-    //         (Self::Json(serde_json::Value::Object(x)), ElemSymbol::Object) => Ok(Self::Object(x)),
-    //         (Self::Json(json), elem_symbol) => Err(ElemError::UnpackJsonUnsupportedSymbol {
-    //           json: json,
-    //           elem_symbol: From::from(elem_symbol),
-    //         }),
-    //         (non_json, _) => Err(ElemError::UnpackJsonUnexpectedType {
-    //               non_json: non_json.symbol_str(),
-    //               elem_symbol: From::from(elem_symbol),
-    //         }),
-    //     }
-    // }
 
 
 
