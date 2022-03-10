@@ -1,22 +1,23 @@
-use crate::elem::{Elem, AnElem, AnElemError, ElemSymbol};
+use crate::elem::{Elem, AnElem};
 use crate::stack::{Stack, StackError};
 use crate::types::{Empty, AnError, Nil};
 
 use std::cmp;
 use std::convert::TryFrom;
-use std::iter::FromIterator;
+// use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::string::FromUtf8Error;
 
-use enumset::EnumSet;
-use generic_array::typenum::{U0, U1, U2};
-use generic_array::sequence::GenericSequence;
+// use enumset::EnumSet;
 use generic_array::functional::FunctionalSequence;
-use generic_array::{arr, GenericArray, GenericArrayIter, ArrayLength};
+use generic_array::sequence::GenericSequence;
+use generic_array::typenum::{U0, U1, U2};
+use generic_array::{GenericArray, ArrayLength};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
+use typenum::marker_traits::Unsigned;
 
 // use generic_array::typenum::{B1};
 // use typenum::marker_traits::Unsigned;
@@ -44,6 +45,32 @@ where
 //     fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> { <T as AnElem>::from_elem(PhantomData, x).map(|y| { Singleton { t: y, } }) }
 // }
 
+#[derive(Clone, Debug, Error)]
+pub enum ElemsPopError {
+    #[error("Elems::pop singleton: tried to pop an Elem that was not found: {error:?}")]
+    PopSingleton {
+        error: StackError,
+    },
+
+    #[error("Elems::pop: tried to pop a set of Elem's that were not found: {hd_error:?}\n{tl_errors:?}")]
+    Pop {
+        hd_error: Arc<Self>,
+        tl_errors: Arc<Self>,
+    },
+
+    // TODO: add detail
+    #[error("Elems::pop: generic_array internal error")]
+    GenericArray,
+}
+
+impl From<StackError> for ElemsPopError {
+    fn from(error: StackError) -> Self {
+        Self::PopSingleton {
+            error: error,
+        }
+    }
+}
+
 pub trait Elems: Clone + Debug {
     type Hd: AnElem;
     type N: ArrayLength<Self::Hd>;
@@ -56,6 +83,10 @@ pub trait Elems: Clone + Debug {
     // fn elem_symbols(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
     // fn to_elems(self) -> Elem;
     // fn from_elems(t: PhantomData<Self>, x: &mut Stack) -> Result<Self, ElemsError>;
+
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
+    where
+        Self: Sized;
 }
 
 pub trait IElems: Elems {}
@@ -111,6 +142,23 @@ where
     fn or<U, F: Fn(&GenericArray<Self::Hd, Self::N>) -> U, G: Fn(&Self::Tl) -> U>(&self, f: F, _g: G) -> U {
         f(&self.array)
     }
+
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
+    where
+        Self: Sized,
+    {
+        let vec = (1..<N as Unsigned>::to_usize()).map(|_array_ix| {
+            stack
+                .pop_elem(PhantomData::<T>)
+                .map_err(|e| <ElemsPopError as From<StackError>>::from(e))
+        }).collect::<Result<Vec<T>, ElemsPopError>>()?;
+        let array = GenericArray::from_exact_iter(vec).ok_or_else(|| {
+            ElemsPopError::GenericArray
+        })?;
+        Ok(Singleton {
+            array: array,
+        })
+    }
 }
 
 impl<T, N> IElems for Singleton<T, N>
@@ -148,6 +196,25 @@ where
         match self {
             Self::Left(x) => f(x),
             Self::Right(x) => g(x),
+        }
+    }
+
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
+    where
+        Self: Sized,
+    {
+        match <Singleton<T, N> as Elems>::pop(PhantomData, stack) {
+            Ok(Singleton { array }) => Ok(Self::Left(array)),
+            Err(hd_error) => {
+                Elems::pop(PhantomData::<U>, stack)
+                    .map(|x| Self::Right(x))
+                    .map_err(|tl_errors| {
+                        ElemsPopError::Pop {
+                            hd_error: Arc::new(hd_error),
+                            tl_errors: Arc::new(tl_errors),
+                        }
+                    })
+            },
         }
     }
 }
@@ -240,6 +307,18 @@ where
     fn or<U, F: Fn(&GenericArray<Self::Hd, Self::N>) -> U, G: Fn(&Self::Tl) -> U>(&self, f: F, g: G) -> U {
         self.singleton.or(f, g)
     }
+
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
+    where
+        Self: Sized,
+    {
+        Ok(ReturnSingleton {
+            singleton: Elems::pop(PhantomData::<Singleton<T, N>>, stack)?,
+            returning: Return {
+                return_value: Arc::new(Mutex::new(None)),
+            },
+        })
+    }
 }
 
 impl<T, N> IOElems for ReturnSingleton<T, N>
@@ -287,6 +366,26 @@ where
             Self::Right(x) => g(x),
         }
     }
+
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
+    where
+        Self: Sized,
+    {
+        <Or<T, N, U> as Elems>::pop(PhantomData, stack)
+            .map(|x| {
+                match x {
+                    Or::Left(array) => Self::Left {
+                        array: array,
+                        returning: Return {
+                            return_value: Arc::new(Mutex::new(None)),
+                        },
+                    },
+                    Or::Right(y) => Self::Right(y),
+                }
+            })
+
+    }
+
 }
 
 impl<T, N, U> IOElems for ReturnOr<T, N, U>
@@ -314,11 +413,13 @@ where
 
 
 
-
 // + IntoIterator<Item = Elem>
 pub trait IsList: Debug {
     type Hd: Elems;
     type Tl: IsList;
+
+    fn empty_list() -> Option<Self> where Self: Sized;
+    fn cons_list(x: Self::Hd, xs: Self::Tl) -> Self;
 
     fn is_empty(&self) -> bool;
     fn hd(self) -> Self::Hd;
@@ -332,12 +433,34 @@ pub trait IsList: Debug {
             tl: self,
         }
     }
-    // fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
+
+    // TODO: wrap ElemsError w/ whole stack, position in stack, etc
+    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
+    where
+        Self: Sized,
+    {
+        match <Self as IsList>::empty_list() {
+            Some(x) => Ok(x),
+            None => {
+                let x = <Self::Hd as Elems>::pop(PhantomData, stack)?;
+                let xs = <Self::Tl as IsList>::pop(PhantomData, stack)?;
+                Ok(<Self as IsList>::cons_list(x, xs))
+            }
+        }
+    }
 }
 
 impl IsList for Nil {
     type Hd = Singleton<(), U0>;
     type Tl = Nil;
+
+    fn empty_list() -> Option<Self> where Self: Sized {
+        Some(Self {})
+    }
+
+    fn cons_list(_x: Self::Hd, _xs: Self::Tl) -> Self {
+        Self {}
+    }
 
     fn is_empty(&self) -> bool {
         true
@@ -363,6 +486,17 @@ pub struct Cons<T: Elems, U: IsList> {
 impl<T: Elems, U: IsList> IsList for Cons<T, U> {
     type Hd = T;
     type Tl = U;
+
+    fn empty_list() -> Option<Self> where Self: Sized {
+        None
+    }
+
+    fn cons_list(x: Self::Hd, xs: Self::Tl) -> Self {
+        Cons {
+            hd: x,
+            tl: xs,
+        }
+    }
 
     fn is_empty(&self) -> bool {
         false
@@ -434,6 +568,19 @@ where
 {
     type Hd = T;
     type Tl = U;
+
+    fn empty_list() -> Option<Self> where Self: Sized {
+        None
+    }
+
+    fn cons_list(x: Self::Hd, xs: Self::Tl) -> Self {
+        ConsOut {
+            cons: Cons {
+                hd: x,
+                tl: xs,
+            },
+        }
+    }
 
     fn is_empty(&self) -> bool {
         self.cons.is_empty()
