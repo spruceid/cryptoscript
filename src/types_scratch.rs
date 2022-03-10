@@ -18,9 +18,14 @@ use generic_array::{arr, GenericArray, GenericArrayIter, ArrayLength};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
+// use generic_array::typenum::{B1};
+// use typenum::marker_traits::Unsigned;
+// use typenum::type_operators::IsLess;
+
 // NEXT:
-// - finish migrating instruction implementations from elem to IsInstructionT
-// - migrate pop-stack from IsInstruction
+// - migrate pop from ElemList
+//     fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
+
 // - delete old IsInstruction
 // - add typing info as with pop-stack
 
@@ -205,6 +210,7 @@ where
         },
     }
 }
+
 
 
 
@@ -457,24 +463,15 @@ where
 
 
 pub trait IsInstructionT: std::fmt::Debug {
-    type In: IOList;
+    type IO: IOList;
     type Error: AnError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error>;
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error>;
 }
-
-
-
-// #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
-// pub enum Instruction {
-//     Restack(Restack),
-// }
-
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Concat {
-}
+pub struct Concat {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConcatError {}
 impl AnError for ConcatError {}
@@ -487,12 +484,12 @@ impl AnError for ConcatError {}
 //
 // bytes, array, object
 impl IsInstructionT for Concat {
-    type In = ConsOut<ReturnOr<Vec<u8>,             U2,
+    type IO = ConsOut<ReturnOr<Vec<u8>,             U2,
                       ReturnOr<Vec<Value>,          U2,
                ReturnSingleton<Map<String, Value>,  U2>>>, Nil>;
     type Error = ConcatError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let y = x.hd();
         match y {
             ReturnOr::Left { array, returning } => {
@@ -522,10 +519,10 @@ pub struct AssertTrueError {}
 impl AnError for AssertTrueError {}
 
 impl IsInstructionT for AssertTrue {
-    type In = ConsOut<ReturnSingleton<bool, U1>, Nil>;
+    type IO = ConsOut<ReturnSingleton<bool, U1>, Nil>;
     type Error = AssertTrueError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let array = x.clone().hd().singleton.array;
         let returning = x.hd().returning;
         if array[0] {
@@ -544,10 +541,10 @@ pub struct Push<T: AnElem> {
 }
 
 impl<T: AnElem> IsInstructionT for Push<T> {
-    type In = ConsOut<ReturnSingleton<T, U0>, Nil>;
+    type IO = ConsOut<ReturnSingleton<T, U0>, Nil>;
     type Error = Empty;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         x.hd().returning.returning(self.push.clone());
         Ok(())
     }
@@ -562,10 +559,10 @@ pub struct HashSha256Error {}
 impl AnError for HashSha256Error {}
 
 impl IsInstructionT for HashSha256 {
-    type In = ConsOut<ReturnSingleton<Vec<u8>, U1>, Nil>;
+    type IO = ConsOut<ReturnSingleton<Vec<u8>, U1>, Nil>;
     type Error = Empty;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let array = x.clone().hd().singleton.array;
         let returning = x.hd().returning;
         returning.returning(super::sha256(&array[0]));
@@ -607,14 +604,14 @@ impl AnError for SliceError {}
 
 // bytes, string, array, object
 impl IsInstructionT for Slice {
-    type In = ConsOut<ReturnOr<Vec<u8>,             U1,
+    type IO = ConsOut<ReturnOr<Vec<u8>,             U1,
                       ReturnOr<String,              U1,
                       ReturnOr<Vec<Value>,          U1,
                ReturnSingleton<Map<String, Value>,  U1>>>>,
                 Cons<Singleton<Number,              U2>, Nil>>;
     type Error = SliceError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let y = x.clone().hd();
         let offset_length = x.clone().tl().hd().array;
         let offset = &offset_length[0];
@@ -696,13 +693,13 @@ impl AnError for IndexError {}
 
 // bytes, array, object
 impl IsInstructionT for Index {
-    type In = ConsOut<ReturnSingleton<Value,                U0>,
+    type IO = ConsOut<ReturnSingleton<Value,                U0>,
                               Cons<Or<Vec<Value>,           U2,
                             Singleton<Map<String, Value>,   U2>>,
                        Cons<Singleton<Number,               U1>, Nil>>>;
     type Error = IndexError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = x.clone().tl().hd();
         let index = &x.clone().tl().tl().hd().array[0];
@@ -747,10 +744,10 @@ pub struct ToJsonError {
 impl AnError for ToJsonError {}
 
 impl IsInstructionT for ToJson {
-    type In = ConsOut<ReturnSingleton<Value, U0>, Cons<AllElems<U1>, Nil>>;
+    type IO = ConsOut<ReturnSingleton<Value, U0>, Cons<AllElems<U1>, Nil>>;
     type Error = ToJsonError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
         let array = all_elems_untyped(y);
@@ -774,10 +771,10 @@ pub struct LookupError {
 impl AnError for LookupError {}
 
 impl IsInstructionT for Lookup {
-    type In = ConsOut<ReturnSingleton<Value, U0>, Cons<Singleton<String, U1>, Cons<Singleton<Map<String, Value>, U1>, Nil>>>;
+    type IO = ConsOut<ReturnSingleton<Value, U0>, Cons<Singleton<String, U1>, Cons<Singleton<Map<String, Value>, U1>, Nil>>>;
     type Error = LookupError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let key = &x.clone().tl().hd().array[0];
         let map = &x.tl().tl().hd().array[0];
@@ -838,11 +835,11 @@ impl AJsonElem for () {
     // }
 
 impl<T: AJsonElem> IsInstructionT for UnpackJson<T> {
-    type In = ConsOut<ReturnSingleton<T, U0>,
+    type IO = ConsOut<ReturnSingleton<T, U0>,
                        Cons<Singleton<Value, U1>, Nil>>;
     type Error = UnpackJsonError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let json = &x.clone().tl().hd().array[0];
         let result =
@@ -858,10 +855,10 @@ impl<T: AJsonElem> IsInstructionT for UnpackJson<T> {
 pub struct StringToBytes {}
 
 impl IsInstructionT for StringToBytes {
-    type In = ConsOut<ReturnSingleton<Vec<u8>, U0>, Cons<Singleton<String, U1>, Nil>>;
+    type IO = ConsOut<ReturnSingleton<Vec<u8>, U0>, Cons<Singleton<String, U1>, Nil>>;
     type Error = Empty;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let in_str = &x.clone().tl().hd().array[0];
         returning.returning(in_str.clone().into_bytes());
@@ -879,10 +876,10 @@ pub struct CheckLeError {
 impl AnError for CheckLeError {}
 
 impl IsInstructionT for CheckLe {
-    type In = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
+    type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
     type Error = CheckLeError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
         let array = all_elems_untyped(y);
@@ -913,10 +910,10 @@ pub struct CheckLtError {
 impl AnError for CheckLtError {}
 
 impl IsInstructionT for CheckLt {
-    type In = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
+    type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
     type Error = CheckLtError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
         let array = all_elems_untyped(y);
@@ -947,10 +944,10 @@ pub struct CheckEqError {
 impl AnError for CheckEqError {}
 
 impl IsInstructionT for CheckEq {
-    type In = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
+    type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
     type Error = CheckEqError;
 
-    fn run(&self, x: Self::In) -> Result<(), Self::Error> {
+    fn run(&self, x: Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
         let array = all_elems_untyped(y);
