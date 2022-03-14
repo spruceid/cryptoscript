@@ -56,13 +56,6 @@ where
     }
 }
 
-
-// impl<T: AnElem> AnElem for Singleton<T> {
-//     fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> { <T as AnElem>::elem_symbol(PhantomData) }
-//     fn to_elem(self) -> Elem { self.t.to_elem() }
-//     fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> { <T as AnElem>::from_elem(PhantomData, x).map(|y| { Singleton { t: y, } }) }
-// }
-
 #[derive(Clone, Debug, Error)]
 pub enum ElemsPopError {
     #[error("Elems::pop singleton: tried to pop an Elem that was not found: {error:?}")]
