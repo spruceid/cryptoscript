@@ -98,7 +98,7 @@ impl Restack {
     }
 
     // restack a Stack
-    pub fn run<T: Clone>(&self, stack: &mut Vec<T>) -> Result<Vec<T>, RestackError> {
+    pub fn run<T: Clone>(&self, stack: &mut Vec<T>) -> Result<(), RestackError> {
         if self.restack_depth <= stack.len() {
             let result = self.restack_vec.iter().map(|&restack_index|
                 match stack.get(restack_index) {
@@ -109,7 +109,9 @@ impl Restack {
             match result {
                 Ok(mut result_ok) => {
                     result_ok.extend(stack.drain(self.restack_depth..));
-                    Ok(result_ok) },
+                    *stack = result_ok;
+                    Ok(())
+                },
                 Err(e) => Err(e)
             }
 

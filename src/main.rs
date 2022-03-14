@@ -1,4 +1,6 @@
 use cryptoscript::{parse_json, Elem, ElemSymbol, Executor, Instruction, Instructions, Restack};
+
+use cryptoscript::{Stack, Instrs, AssertTrue, Push};
 // use cryptoscript::{demo_triple, demo_triple_with_tl_handles_intermediate_types, HList};
 
 #[cfg(test)]
@@ -26,7 +28,7 @@ mod tests {
 
 fn main() {
 
-    let _input_json = r#"
+    let input_json = r#"
         {
           "queries": [
             {
@@ -68,6 +70,30 @@ fn main() {
           ]
         }
         "#;
+
+    let mut instructions_vec_t_1 = Instrs::new();
+    instructions_vec_t_1.instr(Push { push: true });
+    instructions_vec_t_1.restack(Restack::id());
+    instructions_vec_t_1.instr(AssertTrue {});
+
+        // : Instrs = Instrs { instrs: vec![
+        // TEST #1
+        // Arc::new(Push { push: true }),
+
+        // Instruction::Push(Elem::Bool(true)),
+        // Instruction::Restack(Restack::id()),
+        // Instruction::AssertTrue,
+
+    // ]};
+
+    let mut stack = Stack::new();
+    let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
+    stack.push_elem(input_json_value);
+
+    format!("{:?}", instructions_vec_t_1.run(&mut stack));
+    println!("FINAL STACK");
+    println!("{:?}", stack);
+
 
     // let json_instructions = parse_json()"
     let instructions_vec: Vec<Instruction> = vec![

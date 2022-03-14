@@ -71,10 +71,12 @@ impl Restack {
         let mut restack_type: Vec<TypeId> = (0..self.restack_depth)
             .map(|x| context.push(ElemType::any(vec![line_no.in_at(x)])))
             .collect();
+        let i_type = restack_type.clone();
+        self.run(&mut restack_type)?;
         Ok(Type {
             context: context,
-            i_type: restack_type.clone(),
-            o_type: self.run(&mut restack_type)?,
+            i_type: i_type,
+            o_type: restack_type,
         })
     }
 }

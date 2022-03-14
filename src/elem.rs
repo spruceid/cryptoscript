@@ -543,7 +543,7 @@ impl From<serde_json::Error> for ElemError {
 
 
 
-pub trait AnElem: Clone + std::fmt::Debug {
+pub trait AnElem: Clone + std::fmt::Debug + PartialEq {
     fn elem_symbol(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
     fn to_elem(self) -> Elem;
     fn from_elem(t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError>;

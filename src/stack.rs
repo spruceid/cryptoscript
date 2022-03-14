@@ -21,12 +21,19 @@ use typenum::marker_traits::Unsigned;
 
 
 // TODO: use for execution
+// TODO: pub field needed?
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct Stack {
-    stack: Vec<Elem>,
+    pub stack: Vec<Elem>,
 }
 
 impl Stack {
+    pub fn new() -> Self {
+        Stack {
+            stack: vec![],
+        }
+    }
+
     // TODO: since pop can fail, require passing debug info to it
     // (so we know what we were expecting)
     pub fn pop(&mut self) -> Result<Elem, StackError> {
@@ -45,6 +52,10 @@ impl Stack {
         // memo.append(&mut self.stack.clone());
         memo.append(&mut self.stack);
         self.stack = memo;
+    }
+
+    pub fn push_elem(&mut self, elem: impl AnElem) {
+        self.push(elem.to_elem())
     }
 
     // TODO: reversed?

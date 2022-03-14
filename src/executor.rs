@@ -50,7 +50,7 @@ impl Executor {
     }
 
     fn restack(&mut self, restack: Restack) -> Result<(), ExecError> {
-        self.stack = restack.run(&mut self.stack)?;
+        restack.run(&mut self.stack)?;
         Ok(())
     }
 
