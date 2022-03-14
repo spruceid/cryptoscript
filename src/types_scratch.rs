@@ -14,7 +14,7 @@ use std::string::FromUtf8Error;
 use generic_array::functional::FunctionalSequence;
 use generic_array::sequence::GenericSequence;
 use generic_array::typenum::{U0, U1, U2};
-use generic_array::{GenericArray, ArrayLength};
+use generic_array::{GenericArray, GenericArrayIter, ArrayLength};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 use typenum::marker_traits::Unsigned;
@@ -24,11 +24,14 @@ use typenum::marker_traits::Unsigned;
 // use typenum::type_operators::IsLess;
 
 // NEXT:
-// - migrate pop from ElemList
-//     fn pop(x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError>;
-
 // - delete old IsInstruction
+//
 // - add typing info as with pop-stack
+//  + get typing up to parity
+//  + add special-case unifier for restack + IsInstructionT for testing?
+//
+// - random type -> ~random inhabitant of the type
+// - random typed program!?
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Singleton<T, N>
@@ -38,6 +41,20 @@ where
 {
     array: GenericArray<T, N>,
 }
+
+impl<T, N> IntoIterator for Singleton<T, N>
+where
+    T: AnElem,
+    N: ArrayLength<T> + Debug,
+{
+    type Item = Elem;
+    type IntoIter = std::iter::Map<GenericArrayIter<T, N>, impl Fn(T) -> Elem>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.array.into_iter().map(AnElem::to_elem)
+    }
+}
+
 
 // impl<T: AnElem> AnElem for Singleton<T> {
 //     fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> { <T as AnElem>::elem_symbol(PhantomData) }
@@ -71,7 +88,7 @@ impl From<StackError> for ElemsPopError {
     }
 }
 
-pub trait Elems: Clone + Debug {
+pub trait Elems: Clone + Debug + IntoIterator<Item = Elem> {
     type Hd: AnElem;
     type N: ArrayLength<Self::Hd>;
     type Tl: Elems<N = Self::N>;
@@ -124,6 +141,9 @@ pub trait IOElems: Elems {
         where
             F: Fn(&GenericArray<Self::Hd, Self::N>, &Return<Self::Hd>) -> T,
             G: Fn(&Self::Tl) -> T;
+
+    // TODO: rename to 'returned' to match Return<T>
+    fn returning(&self) -> Option<Elem>;
 }
 
 
@@ -178,6 +198,54 @@ where
 {
     Left(GenericArray<T, N>),
     Right(U),
+}
+
+// #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IterOr<T, N, U>
+where
+    T: AnElem,
+    N: ArrayLength<T> + Debug,
+    U: Elems<N = N>,
+{
+    Left(<Singleton<T, N> as IntoIterator>::IntoIter),
+    Right(<U as IntoIterator>::IntoIter),
+}
+
+impl<T, N, U> Iterator for IterOr<T, N, U>
+where
+    T: AnElem,
+    N: ArrayLength<T> + Debug,
+    U: Elems<N = N>,
+{
+    type Item = Elem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Left(x) => x.next(),
+            Self::Right(x) => x.next(),
+        }
+    }
+}
+
+impl<T, N, U> IntoIterator for Or<T, N, U>
+where
+    T: AnElem,
+    N: ArrayLength<T> + Debug,
+    U: Elems<N = N>,
+{
+    type Item = Elem;
+    type IntoIter = IterOr<T, N, U>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Self::Left(array) => IterOr::Left(
+                Singleton {
+                    array: array,
+                }.into_iter()
+            ),
+            Self::Right(xs) => IterOr::Right(xs.into_iter()),
+        }
+    }
 }
 
 impl<T, N, U> Elems for Or<T, N, U>
@@ -293,6 +361,19 @@ where
     returning: Return<T>,
 }
 
+impl<T, N> IntoIterator for ReturnSingleton<T, N>
+where
+    T: AnElem,
+    N: ArrayLength<T> + Debug,
+{
+    type Item = Elem;
+    type IntoIter = <Singleton<T, N> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.singleton.into_iter()
+    }
+}
+
 impl<T, N> Elems for ReturnSingleton<T, N>
 where
     T: AnElem,
@@ -333,6 +414,10 @@ where
     {
         f(&self.singleton.array, &self.returning)
     }
+
+    fn returning(&self) -> Option<Elem> {
+        self.returning.returned().map(|x| x.to_elem())
+    }
 }
 
 
@@ -348,6 +433,23 @@ where
         returning: Return<T>,
     },
     Right(U),
+}
+
+impl<T, N, U> IntoIterator for ReturnOr<T, N, U>
+where
+    T: AnElem,
+    N: ArrayLength<T> + Debug,
+    U: Elems<N = N>,
+{
+    type Item = Elem;
+    type IntoIter = <Or<T, N, U> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Self::Left { array, .. } => Or::<T, N, U>::Left(array).into_iter(),
+            Self::Right(xs) => Or::Right(xs).into_iter(),
+        }
+    }
 }
 
 impl<T, N, U> Elems for ReturnOr<T, N, U>
@@ -406,6 +508,15 @@ where
             Self::Right(x) => g(x),
         }
     }
+
+    fn returning(&self) -> Option<Elem> {
+        match self {
+            Self::Left { returning, .. } => {
+                returning.returned().map(|x| x.to_elem())
+            },
+            Self::Right(x) => x.returning(),
+        }
+    }
 }
 
 
@@ -413,8 +524,8 @@ where
 
 
 
-// + IntoIterator<Item = Elem>
-pub trait IsList: Debug {
+
+pub trait IsList: Clone + Debug + IntoIterator<Item = Elem> {
     type Hd: Elems;
     type Tl: IsList;
 
@@ -483,6 +594,31 @@ pub struct Cons<T: Elems, U: IsList> {
     tl: U,
 }
 
+pub struct IterCons<T: Elems, U: IsList> {
+    hd: <T as IntoIterator>::IntoIter,
+    tl: <U as IntoIterator>::IntoIter,
+}
+
+impl<T: Elems, U: IsList> IntoIterator for Cons<T, U> {
+    type Item = Elem;
+    type IntoIter = IterCons<T, U>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IterCons {
+            hd: self.hd.into_iter(),
+            tl: self.tl.into_iter(),
+        }
+    }
+}
+
+impl<T: Elems, U: IsList> Iterator for IterCons<T, U> {
+    type Item = Elem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.hd.next().or_else(|| self.tl.next())
+    }
+}
+
 impl<T: Elems, U: IsList> IsList for Cons<T, U> {
     type Hd = T;
     type Tl = U;
@@ -509,15 +645,6 @@ impl<T: Elems, U: IsList> IsList for Cons<T, U> {
     fn tl(self) -> Self::Tl {
         self.tl
     }
-
-    // // add better errors
-    // fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, StackError> {
-    //     let hd_arr = stack.pop_generic_array(PhantomData, PhantomData)?;
-    //     Ok(Cons {
-    //         hd: hd_arr,
-    //         tl: Self::Tl::pop(PhantomData, stack)?,
-    //     })
-    // }
 }
 
 
@@ -541,6 +668,8 @@ where
 
 pub trait IOList: IsList {
     type Return: IOElems;
+
+    fn returning(&self) -> Option<Elem>;
 }
 
 impl<T, U> IOList for Cons<T, U>
@@ -549,6 +678,10 @@ where
     U: IOList,
 {
     type Return = U::Return;
+
+    fn returning(&self) -> Option<Elem> {
+        self.tl.returning()
+    }
 }
 
 
@@ -559,6 +692,19 @@ where
     U: IList,
 {
     cons: Cons<T, U>,
+}
+
+impl<T: IOElems, U: IList> IntoIterator for ConsOut<T, U> {
+    type Item = Elem;
+    type IntoIter = IterCons<T, U>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.cons.into_iter()
+        // IterCons {
+        //     cons: self.cons,
+        //     at_head: true,
+        // }
+    }
 }
 
 impl<T, U> IsList for ConsOut<T, U>
@@ -601,6 +747,10 @@ where
     U: IList,
 {
     type Return = T;
+
+    fn returning(&self) -> Option<Elem> {
+        self.cons.hd.returning()
+    }
 }
 
 
@@ -609,12 +759,64 @@ where
 
 
 
-pub trait IsInstructionT: std::fmt::Debug {
+pub trait IsInstructionT: Clone + Debug {
     type IO: IOList;
     type Error: AnError;
 
     fn run(&self, x: Self::IO) -> Result<(), Self::Error>;
 }
+
+pub enum InstructionError {
+    ElemsPopError(ElemsPopError),
+
+    RawInstructionError(String),
+
+    // TODO: more granular typing
+    MissingOutput {
+        instruction: String,
+        stack_input: String,
+    },
+}
+
+pub trait IsInstructionU: Debug {
+    fn stack_run(&self, stack: &mut Stack) -> Result<(), InstructionError>;
+
+    // type IO: IOList;
+    // type Error: AnError;
+
+    // fn run(&self, x: Self::IO) -> Result<(), Self::Error>;
+}
+
+impl<T> IsInstructionU for T
+where
+    T: IsInstructionT,
+{
+    fn stack_run(&self, stack: &mut Stack) -> Result<(), InstructionError> {
+        let stack_input = IsList::pop(PhantomData::<<T as IsInstructionT>::IO>, stack)
+            .map_err(|e| InstructionError::ElemsPopError(e))?;
+        self.run(stack_input)
+            .map_err(|e| InstructionError::RawInstructionError(format!("{:?}", e)))?;
+        let output_value = stack_input
+            .returning()
+            .ok_or_else(|| InstructionError::MissingOutput {
+                instruction: format!("{:?}", self),
+                stack_input: format!("{:?}", stack_input),
+            })?;
+        stack.push(output_value);
+        Ok(())
+    }
+}
+
+
+#[derive(Clone, Debug)]
+pub struct Instrs {
+    instrs: Vec<Arc<dyn IsInstructionU>>,
+}
+
+
+
+
+
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
