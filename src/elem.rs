@@ -1,8 +1,11 @@
 use crate::arbitrary::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
+use crate::stack::{Location};
 
 use thiserror::Error;
 
 use std::cmp;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 use std::iter::{IntoIterator};
 
@@ -196,11 +199,187 @@ impl Elem {
 
 
 
+/* #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)] */
+/* pub enum BaseElemType { */
+/*     Any, */
+/*     Concat, */
+/*     Index, */
+/*     Slice, */
+/*     ElemSymbol(ElemSymbol), */
+/* } */
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ElemTypeInfo {
+    /* base_elem_type: BaseElemType, */
+    location: Location,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ElemType {
+    type_set: EnumSet<ElemSymbol>,
+    info: Vec<ElemTypeInfo>,
+}
+
+// Formatting:
+// ```
+// ElemType {
+//     type_set: {A, B, C},
+//     info: _,
+// }
+// ```
+//
+// Results in:
+// ```
+// {A, B, C}
+// ```
+impl Display for ElemType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f,
+               "{{{}}}",
+               self.type_set.iter()
+               .fold(String::new(),
+                     |memo, x| {
+                         let x_str: &'static str = From::from(x);
+                         if memo == "" {
+                            x_str.to_string()
+                         } else {
+                            memo + ", " + &x_str.to_string()
+                         }
+                    }
+               ))
+    }
+}
+
+#[cfg(test)]
+mod elem_type_display_tests {
+    use super::*;
+
+    #[test]
+    fn test_empty() {
+        let elem_type = ElemType {
+            type_set: EnumSet::empty(),
+            info: vec![],
+        };
+        assert_eq!("{}", format!("{}", elem_type));
+    }
+
+    #[test]
+    fn test_singleton() {
+        for elem_symbol in EnumSet::all().iter() {
+            let elem_type = ElemType {
+                type_set: EnumSet::only(elem_symbol),
+                info: vec![],
+            };
+            assert_eq!(format!("{{{}}}", Into::<&'static str>::into(elem_symbol)),
+                       format!("{}", elem_type));
+        }
+    }
+
+    #[test]
+    fn test_all() {
+        assert_eq!("{Unit, Bool, Number, Bytes, String, Array, Object, JSON}",
+                   format!("{}", ElemType::any(vec![])));
+    }
+}
+
+impl ElemSymbol {
+    pub fn elem_type(&self, locations: Vec<Location>) -> ElemType {
+        ElemType {
+            type_set: EnumSet::only(*self),
+            info: locations.iter()
+                .map(|&location|
+                     ElemTypeInfo {
+                         // base_elem_type: BaseElemType::ElemSymbol(*self),
+                         location: location,
+                    }).collect(),
+        }
+    }
+}
+
+impl Elem {
+    pub fn elem_type(&self, locations: Vec<Location>) -> ElemType {
+        self.symbol().elem_type(locations)
+    }
+}
+
+impl ElemType {
+    fn from_locations(type_set: EnumSet<ElemSymbol>,
+                      // base_elem_type: BaseElemType,
+                      locations: Vec<Location>) -> Self {
+        ElemType {
+            type_set: type_set,
+            info: locations.iter()
+                .map(|&location|
+                     ElemTypeInfo {
+                         // base_elem_type: base_elem_type,
+                         location: location,
+                    }).collect(),
+        }
+    }
+
+    pub fn any(locations: Vec<Location>) -> Self {
+        Self::from_locations(
+            EnumSet::all(),
+            // BaseElemType::Any,
+            locations)
+    }
+
+    // pub fn concat_type(locations: Vec<Location>) -> Self {
+    //     Self::from_locations(
+    //         enum_set!(ElemSymbol::Bytes |
+    //                   ElemSymbol::String |
+    //                   ElemSymbol::Array |
+    //                   ElemSymbol::Object),
+    //         // BaseElemType::Concat,
+    //         locations)
+    // }
+
+    // pub fn index_type(locations: Vec<Location>) -> Self {
+    //     Self::from_locations(
+    //         enum_set!(ElemSymbol::Array |
+    //                   ElemSymbol::Object),
+    //         // BaseElemType::Index,
+    //         locations)
+    // }
+
+    // pub fn slice_type(locations: Vec<Location>) -> Self {
+    //     Self::concat_type(locations)
+    // }
+
+    pub fn unify(&self, other: Self) -> Result<Self, ElemTypeError> {
+        let both = self.type_set.intersection(other.type_set);
+        if both.is_empty() {
+            Err(ElemTypeError::UnifyEmpty {
+                lhs: self.clone(),
+                rhs: other.clone(),
+            })
+        } else {
+            let mut both_info = self.info.clone();
+            both_info.append(&mut other.info.clone());
+            Ok(ElemType {
+                type_set: both,
+                info: both_info,
+            })
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Error)]
+pub enum ElemTypeError {
+    #[error("ElemType::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
+    UnifyEmpty {
+        lhs: ElemType,
+        rhs: ElemType,
+        // location: TyUnifyLocation,
+    },
+}
+
 
 
 
 
 pub trait AnElem: Clone + std::fmt::Debug + PartialEq {
+    // fn elem_symbol(t: PhantomData<Self>) -> ElemType;
     fn elem_symbol(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
     fn to_elem(self) -> Elem;
     fn from_elem(t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError>;

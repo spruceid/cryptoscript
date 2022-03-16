@@ -71,7 +71,7 @@ impl Stack {
     }
 
     pub fn debug_type(&self) -> () {
-        println!("type: {:?}", &self.stack.clone().into_iter().map(|x| x.symbol()).collect::<Vec<ElemSymbol>>())
+        println!("stack type: {:?}", &self.stack.clone().into_iter().map(|x| x.symbol()).collect::<Vec<ElemSymbol>>())
     }
 
     pub fn debug(&self) -> Result<(), serde_json::Error> {
