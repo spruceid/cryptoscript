@@ -774,6 +774,8 @@ pub enum InstructionError {
     },
 
     RestackError(RestackError),
+
+    DebugJsonError(serde_json::Error),
 }
 
 pub trait IsStackInstruction: Debug {
@@ -843,6 +845,9 @@ impl Instrs {
 
     pub fn run(&self, stack: &mut Stack) -> Result<(), InstructionError> {
         for instr_or_restack in &self.instrs {
+            stack.debug().map_err(|e| InstructionError::DebugJsonError(e))?;
+            println!("------------------------------------------------------------------------------------------");
+            println!("#: {:?}\n", instr_or_restack);
             match instr_or_restack {
                 Ok(instr) => instr.stack_run(stack)?,
                 Err(restack) => restack.run(&mut stack.stack)
@@ -918,6 +923,7 @@ impl AnError for AssertTrueError {}
 
 impl IsInstructionT for AssertTrue {
     type IO = ConsOut<ReturnSingleton<bool, U1>, Nil>;
+    // TODO: replace w/ Empty
     type Error = AssertTrueError;
 
     fn name(_x: PhantomData<Self>) -> String {
@@ -1215,21 +1221,20 @@ impl IsInstructionT for Lookup {
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct UnpackJson<T: AnElem> {
-    t: PhantomData<T>,
+pub struct UnpackJson<T: AnElem> {
+    pub t: PhantomData<T>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct UnpackJsonError {}
+pub struct UnpackJsonError {}
 impl AnError for UnpackJsonError {}
 
-// TODO: implement for rest of types
 trait AJsonElem: AnElem {
-    fn to_value(&self) -> Value;
+    fn to_value(self) -> Value;
     fn from_value(t: PhantomData<Self>, x: Value) -> Option<Self>;
 }
 
 impl AJsonElem for () {
-    fn to_value(&self) -> Value {
+    fn to_value(self) -> Value {
         Value::Null
     }
 
@@ -1241,24 +1246,70 @@ impl AJsonElem for () {
     }
 }
 
-    // pub fn unpack_json(self, elem_symbol: ElemSymbol) -> Result<Self, ElemError> {
-    //     match (self, elem_symbol) {
-    //         (Self::Json(serde_json::Value::Null), ElemSymbol::Unit) => Ok(Self::Unit),
-    //         (Self::Json(serde_json::Value::Bool(x)), ElemSymbol::Bool) => Ok(Self::Bool(x)),
-    //         (Self::Json(serde_json::Value::Number(x)), ElemSymbol::Number) => Ok(Self::Number(x)),
-    //         (Self::Json(serde_json::Value::String(x)), ElemSymbol::String) => Ok(Self::String(x)),
-    //         (Self::Json(serde_json::Value::Array(x)), ElemSymbol::Array) => Ok(Self::Array(x)),
-    //         (Self::Json(serde_json::Value::Object(x)), ElemSymbol::Object) => Ok(Self::Object(x)),
-    //         (Self::Json(json), elem_symbol) => Err(ElemError::UnpackJsonUnsupportedSymbol {
-    //           json: json,
-    //           elem_symbol: From::from(elem_symbol),
-    //         }),
-    //         (non_json, _) => Err(ElemError::UnpackJsonUnexpectedType {
-    //               non_json: non_json.symbol_str(),
-    //               elem_symbol: From::from(elem_symbol),
-    //         }),
-    //     }
-    // }
+impl AJsonElem for bool {
+    fn to_value(self) -> Value {
+        Value::Bool(self)
+    }
+
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+        match x {
+            Value::Bool(y) => Some(y),
+            _ => None,
+        }
+    }
+}
+
+impl AJsonElem for Number {
+    fn to_value(self) -> Value {
+        Value::Number(self)
+    }
+
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+        match x {
+            Value::Number(y) => Some(y),
+            _ => None,
+        }
+    }
+}
+
+impl AJsonElem for String {
+    fn to_value(self) -> Value {
+        Value::String(self)
+    }
+
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+        match x {
+            Value::String(y) => Some(y),
+            _ => None,
+        }
+    }
+}
+
+impl AJsonElem for Vec<Value> {
+    fn to_value(self) -> Value {
+        Value::Array(self)
+    }
+
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+        match x {
+            Value::Array(y) => Some(y),
+            _ => None,
+        }
+    }
+}
+
+impl AJsonElem for Map<String, Value> {
+    fn to_value(self) -> Value {
+        Value::Object(self)
+    }
+
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+        match x {
+            Value::Object(y) => Some(y),
+            _ => None,
+        }
+    }
+}
 
 impl<T: AJsonElem> IsInstructionT for UnpackJson<T> {
     type IO = ConsOut<ReturnSingleton<T, U0>,
@@ -1504,4 +1555,9 @@ impl IsInstructionT for CheckEq {
 //             })
 //     }
 // }
+
+
+
+
+
 

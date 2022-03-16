@@ -69,6 +69,15 @@ impl Stack {
         }
         GenericArray::from_exact_iter(xs).ok_or_else(|| StackError::TODO)
     }
+
+    pub fn debug(&self) -> Result<(), serde_json::Error> {
+        println!("------------------------------------------------------------------------------------------");
+        for stack_elem in &self.stack {
+            println!("------------------------------");
+            println!("{}", serde_json::to_string_pretty(stack_elem)?)
+        }
+        Ok(())
+    }
 }
 
 

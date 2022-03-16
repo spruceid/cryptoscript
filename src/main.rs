@@ -1,7 +1,9 @@
 use cryptoscript::{parse_json, Elem, ElemSymbol, Executor, Instruction, Instructions, Restack};
 
-use cryptoscript::{Stack, Instrs, AssertTrue, Push};
+use cryptoscript::{Stack, Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq};
 // use cryptoscript::{demo_triple, demo_triple_with_tl_handles_intermediate_types, HList};
+use std::marker::PhantomData;
+use serde_json::{Map, Number, Value};
 
 #[cfg(test)]
 mod tests {
@@ -237,11 +239,140 @@ fn main() {
     instructions_vec_t_1.restack(Restack::id());
     instructions_vec_t_1.instr(AssertTrue {});
 
+    // let mut stack = Stack::new();
+    // let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
+    // stack.push_elem(input_json_value);
+
+    // println!("{:?}", instructions_vec_t_1.run(&mut stack));
+    // println!("FINAL STACK");
+    // println!("{:?}", stack);
+
+    let mut instructions_vec_t_2 = Instrs::new();
+
+    // x["queries"]
+    instructions_vec_t_2.instr(Push { push: "queries".to_string() });
+    instructions_vec_t_2.instr(Lookup {});
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Vec<Value>> });
+
+    // x[0]
+    let zero: Number = From::from(0u8);
+    instructions_vec_t_2.instr(Push { push: zero });
+    instructions_vec_t_2.instr(Index {});
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Map<String, Value>> });
+
+    // x["action"] = "tokenbalance"
+    instructions_vec_t_2.restack(Restack::dup());
+    instructions_vec_t_2.instr(Push { push: "action".to_string() });
+    instructions_vec_t_2.instr(Lookup {});
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
+    instructions_vec_t_2.instr(CheckEq {});
+    instructions_vec_t_2.instr(AssertTrue {});
+
+    // x["contractaddress"] = "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
+    instructions_vec_t_2.restack(Restack::dup());
+    instructions_vec_t_2.instr(Push { push: "contractaddress".to_string() });
+    instructions_vec_t_2.instr(Lookup {});
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
+    instructions_vec_t_2.instr(Push { push: "0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string() });
+    instructions_vec_t_2.instr(CheckEq {});
+    instructions_vec_t_2.instr(AssertTrue {});
+
+    // // x["response"]["result"] = "135499"
+    // Instruction::Restack(Restack::dup()),
+    // Instruction::Push(Elem::String("response".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::Object),
+    // Instruction::Push(Elem::String("result".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::String),
+    // Instruction::Push(Elem::String("135499".to_string())),
+    // Instruction::CheckEq,
+    // Instruction::AssertTrue,
+
+    // // x["prompts"]
+    // Instruction::Restack(Restack::drop()),
+    // Instruction::Push(Elem::String("prompts".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::Array),
+
+    // // x[0]
+    // Instruction::Push(Elem::Number(From::from(0u8))),
+    // Instruction::Index,
+    // Instruction::UnpackJson(ElemSymbol::Object),
+
+    // // x["action"] = "siwe"
+    // Instruction::Restack(Restack::dup()),
+    // Instruction::Push(Elem::String("action".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::String),
+    // Instruction::Push(Elem::String("siwe".to_string())),
+    // Instruction::CheckEq,
+    // Instruction::AssertTrue,
+
+    // // x["version"] = "1.1.0"
+    // Instruction::Restack(Restack::dup()),
+    // Instruction::Push(Elem::String("version".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::String),
+    // Instruction::Push(Elem::String("1.1.0".to_string())),
+    // Instruction::CheckEq,
+    // Instruction::AssertTrue,
+
+    // // x["data"]["fields"]["address"] = "0xe04f27eb70e025b78871a2ad7eabe85e61212761"
+    // Instruction::Restack(Restack::dup()),
+    // Instruction::Push(Elem::String("data".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::Object),
+    // Instruction::Push(Elem::String("fields".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::Object),
+    // Instruction::Push(Elem::String("address".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::String),
+    // Instruction::Push(Elem::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string())),
+    // Instruction::CheckEq,
+    // Instruction::AssertTrue,
+
+    // // sha256(x["data"]["message"])
+    // Instruction::Restack(Restack::dup()),
+    // Instruction::Push(Elem::String("data".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::Object),
+    // Instruction::Push(Elem::String("message".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::String),
+    // Instruction::StringToBytes,
+    // Instruction::HashSha256,
+
+    // // sha256(x["data"]["fields"]["address"])
+    // Instruction::Restack(Restack::swap()),
+    // Instruction::Push(Elem::String("data".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::Object),
+    // Instruction::Push(Elem::String("fields".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::Object),
+    // Instruction::Push(Elem::String("address".to_string())),
+    // Instruction::Lookup,
+    // Instruction::UnpackJson(ElemSymbol::String),
+    // Instruction::StringToBytes,
+    // Instruction::HashSha256,
+
+    // // sha256(sha256(x["data"]["message"]) ++ sha256(x["data"]["fields"]["address"])) =
+    // //  [53,163,178,139,122,187,171,47,42,135,175,176,240,11,10,152,228,238,106,205,132,68,80,79,188,54,124,242,97,132,31,139]
+    // Instruction::Concat,
+    // Instruction::HashSha256,
+    // Instruction::Push(Elem::Bytes(vec![53,163,178,139,122,187,171,47,42,135,175,176,240,11,10,152,228,238,106,205,132,68,80,79,188,54,124,242,97,132,31,139])),
+    // Instruction::CheckEq,
+    // Instruction::AssertTrue,
+
     let mut stack = Stack::new();
     let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
     stack.push_elem(input_json_value);
 
-    format!("{:?}", instructions_vec_t_1.run(&mut stack));
+    println!("instructions:\n{:?}", instructions_vec_t_2);
+
+    println!("{:?}", instructions_vec_t_2.run(&mut stack));
     println!("FINAL STACK");
     println!("{:?}", stack);
 }
