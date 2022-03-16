@@ -370,7 +370,11 @@ fn main() {
     let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
     stack.push_elem(input_json_value);
 
-    println!("instructions:\n{:?}", instructions_vec_t_2);
+    println!("instructions:");
+    for instruction in &instructions_vec_t_2.instrs {
+        println!("{:?}", instruction);
+    }
+    println!("");
 
     println!("{:?}", instructions_vec_t_2.run(&mut stack));
     println!("FINAL STACK");

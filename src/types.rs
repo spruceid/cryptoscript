@@ -1,10 +1,11 @@
 // use crate::restack::{RestackError};
-use crate::elem::{AnElem, Elem, ElemSymbol};
-use crate::stack::{Stack, StackError, LineNo, Location};
+use crate::elem::{Elem, ElemSymbol};
+
+// Stack, StackError, LineNo, 
+use crate::stack::{Location};
 
 use std::collections::BTreeMap;
 use std::cmp;
-use std::iter::{FromIterator};
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -14,7 +15,7 @@ use std::marker::PhantomData;
 
 use enumset::{EnumSet, enum_set};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Number, Value};
+// use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use crate::elem::{Elem, AnElem};
+use crate::elem::{Elem, ElemSymbol, AnElem};
 use crate::stack::{Stack, StackError};
 use crate::restack::{Restack, RestackError};
 use crate::types::{Empty, AnError, Nil};
@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::string::FromUtf8Error;
 
-// use enumset::EnumSet;
+use enumset::EnumSet;
 use generic_array::functional::FunctionalSequence;
 use generic_array::sequence::GenericSequence;
 use generic_array::typenum::{U0, U1, U2};
@@ -71,7 +71,32 @@ pub enum ElemsPopError {
 
     // TODO: add detail
     #[error("Elems::pop: generic_array internal error")]
-    GenericArray,
+    GenericArray {
+        elem_set: EnumSet<ElemSymbol>,
+        vec: Vec<Elem>,
+        size: usize,
+    },
+
+    #[error("IsList::pop (Cons, Hd): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{elem_set:?}\n{stack:?}\n{error:?}")]
+    IsListHd {
+        stack_type: Result<Vec<EnumSet<ElemSymbol>>, Arc<Self>>,
+        elem_set: Result<EnumSet<ElemSymbol>, Arc<Self>>,
+        stack: Stack,
+        error: Arc<Self>,
+    },
+
+    #[error("IsList::pop (Cons, Tl): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{stack:?}\n{error:?}")]
+    IsListTl {
+        stack_type: Result<Vec<EnumSet<ElemSymbol>>, Arc<Self>>,
+        stack: Stack,
+        error: Arc<Self>,
+    },
+
+    #[error("Elems::elem_symbols (Or): Set includes repeated type: {elem_symbols_hd:?}\n{elem_symbols_tl:?}")]
+    ElemSymbolsIntersect {
+        elem_symbols_hd: EnumSet<ElemSymbol>,
+        elem_symbols_tl: EnumSet<ElemSymbol>,
+    }
 }
 
 impl From<StackError> for ElemsPopError {
@@ -98,6 +123,8 @@ pub trait Elems: Clone + Debug + IntoIterator<Item = Elem> {
     fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
     where
         Self: Sized;
+
+    fn elem_symbols(t: PhantomData<Self>) -> Result<EnumSet<ElemSymbol>, ElemsPopError>;
 }
 
 pub trait IElems: Elems {}
@@ -166,12 +193,20 @@ where
                 .pop_elem(PhantomData::<T>)
                 .map_err(|e| <ElemsPopError as From<StackError>>::from(e))
         }).collect::<Result<Vec<T>, ElemsPopError>>()?;
-        let array = GenericArray::from_exact_iter(vec).ok_or_else(|| {
-            ElemsPopError::GenericArray
+        let array = GenericArray::from_exact_iter(vec.clone()).ok_or_else(|| {
+            ElemsPopError::GenericArray {
+                elem_set: AnElem::elem_symbol(PhantomData::<T>),
+                vec: vec.into_iter().map(|x| x.to_elem()).collect(),
+                size: <N as Unsigned>::to_usize(),
+            }
         })?;
         Ok(Singleton {
             array: array,
         })
+    }
+
+    fn elem_symbols(_t: PhantomData<Self>) -> Result<EnumSet<ElemSymbol>, ElemsPopError> {
+        Ok(AnElem::elem_symbol(PhantomData::<T>))
     }
 }
 
@@ -277,6 +312,20 @@ where
                         }
                     })
             },
+        }
+    }
+
+    fn elem_symbols(_t: PhantomData<Self>) -> Result<EnumSet<ElemSymbol>, ElemsPopError> {
+        let mut elem_symbols_hd = AnElem::elem_symbol(PhantomData::<T>);
+        let elem_symbols_tl = Elems::elem_symbols(PhantomData::<U>)?;
+        if elem_symbols_hd.is_disjoint(elem_symbols_tl) {
+            elem_symbols_hd.union(elem_symbols_tl);
+            Ok(elem_symbols_hd)
+        } else {
+            Err(ElemsPopError::ElemSymbolsIntersect {
+                elem_symbols_hd: elem_symbols_hd,
+                elem_symbols_tl: elem_symbols_tl,
+            })
         }
     }
 }
@@ -394,6 +443,10 @@ where
             },
         })
     }
+
+    fn elem_symbols(_t: PhantomData<Self>) -> Result<EnumSet<ElemSymbol>, ElemsPopError> {
+        Elems::elem_symbols(PhantomData::<Singleton<T, N>>)
+    }
 }
 
 impl<T, N> IOElems for ReturnSingleton<T, N>
@@ -482,6 +535,9 @@ where
 
     }
 
+    fn elem_symbols(_t: PhantomData<Self>) -> Result<EnumSet<ElemSymbol>, ElemsPopError> {
+        Elems::elem_symbols(PhantomData::<Or<T, N, U>>)
+    }
 }
 
 impl<T, N, U> IOElems for ReturnOr<T, N, U>
@@ -539,7 +595,8 @@ pub trait IsList: Clone + Debug + IntoIterator<Item = Elem> {
         }
     }
 
-    // TODO: wrap ElemsError w/ whole stack, position in stack, etc
+    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<EnumSet<ElemSymbol>>, ElemsPopError>;
+
     fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
     where
         Self: Sized,
@@ -547,8 +604,18 @@ pub trait IsList: Clone + Debug + IntoIterator<Item = Elem> {
         match <Self as IsList>::empty_list() {
             Some(x) => Ok(x),
             None => {
-                let x = <Self::Hd as Elems>::pop(PhantomData, stack)?;
-                let xs = <Self::Tl as IsList>::pop(PhantomData, stack)?;
+                let original_stack = stack.clone();
+                let x = <Self::Hd as Elems>::pop(PhantomData, stack).map_err(|e| ElemsPopError::IsListHd {
+                    stack_type: IsList::elem_symbols_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
+                    elem_set: Elems::elem_symbols(PhantomData::<Self::Hd>).map_err(|e| Arc::new(e)),
+                    stack: original_stack.clone(),
+                    error: Arc::new(e),
+                })?;
+                let xs = <Self::Tl as IsList>::pop(PhantomData, stack).map_err(|e| ElemsPopError::IsListTl {
+                    stack_type: IsList::elem_symbols_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
+                    stack: original_stack.clone(),
+                    error: Arc::new(e),
+                })?;
                 Ok(<Self as IsList>::cons_list(x, xs))
             }
         }
@@ -579,6 +646,10 @@ impl IsList for Nil {
 
     fn tl(self) -> Self::Tl {
         Self {}
+    }
+
+    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<EnumSet<ElemSymbol>>, ElemsPopError> {
+        Ok(vec![])
     }
 }
 
@@ -638,6 +709,13 @@ impl<T: Elems, U: IsList> IsList for Cons<T, U> {
 
     fn tl(self) -> Self::Tl {
         self.tl
+    }
+
+    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<EnumSet<ElemSymbol>>, ElemsPopError> {
+        let elem_symbols_hd = Elems::elem_symbols(PhantomData::<T>)?;
+        let mut elem_symbols_vec_tl = IsList::elem_symbols_vec(PhantomData::<U>)?;
+        elem_symbols_vec_tl.insert(0, elem_symbols_hd);
+        Ok(elem_symbols_vec_tl)
     }
 }
 
@@ -732,6 +810,10 @@ where
 
     fn tl(self) -> Self::Tl {
         self.cons.tl()
+    }
+
+    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<EnumSet<ElemSymbol>>, ElemsPopError> {
+        IsList::elem_symbols_vec(PhantomData::<Cons<T, U>>)
     }
 }
 
@@ -1199,7 +1281,9 @@ pub struct LookupError {
 impl AnError for LookupError {}
 
 impl IsInstructionT for Lookup {
-    type IO = ConsOut<ReturnSingleton<Value, U0>, Cons<Singleton<String, U1>, Cons<Singleton<Map<String, Value>, U1>, Nil>>>;
+    type IO = ConsOut<ReturnSingleton<Value, U0>,
+                 Cons<Singleton<String, U1>,
+                 Cons<Singleton<Map<String, Value>, U1>, Nil>>>;
     type Error = LookupError;
 
     fn name(_x: PhantomData<Self>) -> String {

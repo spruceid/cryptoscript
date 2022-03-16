@@ -70,7 +70,12 @@ impl Stack {
         GenericArray::from_exact_iter(xs).ok_or_else(|| StackError::TODO)
     }
 
+    pub fn debug_type(&self) -> () {
+        println!("type: {:?}", &self.stack.clone().into_iter().map(|x| x.symbol()).collect::<Vec<ElemSymbol>>())
+    }
+
     pub fn debug(&self) -> Result<(), serde_json::Error> {
+        self.debug_type();
         println!("------------------------------------------------------------------------------------------");
         for stack_elem in &self.stack {
             println!("------------------------------");
