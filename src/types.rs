@@ -11,7 +11,7 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 // use std::alloc::string;
 use std::marker::PhantomData;
-// use std::sync::Arc;
+use std::sync::Arc;
 
 // use enumset::{EnumSet, enum_set};
 // use serde::{Deserialize, Serialize};
@@ -389,7 +389,7 @@ impl Context {
         Ok(self.context.get(index).ok_or_else(|| ContextError::GetUnknownTypeId {
             context: self.clone(),
             index: *index,
-            error: Box::new(error()),
+            error: Arc::new(error()),
         })?.clone())
     }
 
@@ -416,6 +416,18 @@ impl Context {
         }))?;
         self.context.insert(yi, xy_type);
         Ok(())
+    }
+
+    // maximum possible, not maximum present
+    pub fn max_type_id(&self) -> Result<TypeId, ContextError> {
+        let type_id = self.next_type_id.type_id;
+        if type_id == 0 {
+            Err(ContextError::MaxTypeId(self.clone()))
+        } else {
+            Ok(TypeId {
+                type_id: type_id - 1,
+            })
+        }
     }
 }
 
@@ -527,11 +539,20 @@ impl Type {
         })
     }
 
-    pub fn prepend_inputs(&mut self, num_copies: usize, elem_type: ElemType) -> () {
-        if 0 < num_copies {
-            let type_id = self.context.push(elem_type);
-            self.i_type = (1..num_copies).into_iter().map(|_| type_id).chain(self.i_type.into_iter()).collect()
-        }
+    // generic iterable?
+    pub fn prepend_inputs(&mut self, elem_types: Vec<ElemType>) -> () {
+
+        // for elem_type in elem_types {
+        //     let type_id = self.context.push(elem_type);
+        //     self.i_type = 
+
+        //     _
+        // }
+
+        // if 0 < num_copies {
+        //     let type_id = self.context.push(elem_type);
+        //     self.i_type = (1..num_copies).into_iter().map(|_| type_id).chain(self.i_type.into_iter()).collect()
+        // }
     }
 }
 
@@ -632,11 +653,7 @@ mod type_display_tests {
 
 
 
-// TODO: split up TypeError
-// TODO: add layers of detail to TypeIdMapGetUnknownTypeId
-
-
-#[derive(Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Error)]
 pub enum TypeIdMapError {
     #[error("TypeIdMap::get attempted to get a TypeId: {index:?}, not in the map: {type_map:?}; at location in TypeIdMap::run {location:?}")]
     GetUnknownTypeId {
@@ -653,13 +670,13 @@ pub enum TypeIdMapError {
     },
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Error)]
 pub enum ContextError {
     #[error("Context::get applied to a TypeId: {index:?}, not in the Context: {context:?}, error: {error:?}")]
     GetUnknownTypeId {
         context: Context,
         index: TypeId,
-        error: Box<Self>,
+        error: Arc<Self>,
     },
 
     #[error("Context::disjoint_union applied to lhs: {lhs:?}, and rhs: {rhs:?}, /
@@ -712,6 +729,9 @@ pub enum ContextError {
 
     #[error("Context::normalize_on building TypeIdMap failed: {0:?}")]
     TypeIdMapError(TypeIdMapError),
+
+    #[error("Context::max_type_id: next_type_id == 0: {0:?}")]
+    MaxTypeId(Context),
 }
 
 impl From<TypeIdMapError> for ContextError {

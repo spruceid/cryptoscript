@@ -1,7 +1,7 @@
-use crate::elem::{Elem, ElemType, ElemSymbol, AnElem};
+use crate::elem::{Elem, ElemType, ElemTypeError, ElemSymbol, AnElem};
 use crate::stack::{Stack, StackError};
 use crate::restack::{Restack, RestackError};
-use crate::types::{Type, Empty, AnError, Nil};
+use crate::types::{Context, ContextError, Type, Empty, AnError, Nil};
 
 use std::cmp;
 use std::convert::TryFrom;
@@ -92,11 +92,11 @@ pub enum ElemsPopError {
         error: Arc<Self>,
     },
 
-    #[error("Elems::elem_symbols (Or): Set includes repeated type: {elem_symbols_hd:?}\n{elem_symbols_tl:?}")]
-    ElemSymbolsIntersect {
-        elem_symbols_hd: ElemType,
-        elem_symbols_tl: ElemType,
-    }
+    #[error("Elems::elem_type (Or): Set includes repeated type: {0:?}")]
+    ElemTypeError(ElemTypeError),
+
+    #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding type: {0:?}")]
+    ReturnOrContextError(ContextError),
 }
 
 impl From<StackError> for ElemsPopError {
@@ -116,7 +116,6 @@ pub trait Elems: Clone + Debug + IntoIterator<Item = Elem> {
     // fn right(s: PhantomData<Self>, x: Self::Tl) -> Self;
     fn or<T, F: Fn(&GenericArray<Self::Hd, Self::N>) -> T, G: Fn(&Self::Tl) -> T>(&self, f: F, g: G) -> T;
 
-    // fn elem_symbols(t: PhantomData<Self>) -> ElemType;
     // fn to_elems(self) -> Elem;
     // fn from_elems(t: PhantomData<Self>, x: &mut Stack) -> Result<Self, ElemsError>;
 
@@ -124,10 +123,7 @@ pub trait Elems: Clone + Debug + IntoIterator<Item = Elem> {
     where
         Self: Sized;
 
-    fn elem_symbols(t: PhantomData<Self>) -> Result<ElemType, ElemsPopError>;
-
-    // outputting nothing
-    // fn type_of_elems(t: PhantomData<Self>) -> ;
+    fn elem_type(t: PhantomData<Self>) -> Result<ElemType, ElemsPopError>;
 }
 
 pub trait IElems: Elems {}
@@ -168,6 +164,8 @@ pub trait IOElems: Elems {
 
     // TODO: rename to 'returned' to match Return<T>
     fn returning(&self) -> Option<Elem>;
+
+    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError>;
 }
 
 
@@ -208,8 +206,12 @@ where
         })
     }
 
-    fn elem_symbols(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
-        Ok(AnElem::elem_symbol(PhantomData::<T>))
+    // TODO: add info
+    fn elem_type(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
+        Ok(ElemType {
+            type_set: AnElem::elem_symbol(PhantomData::<T>),
+            info: vec![],
+        })
     }
 }
 
@@ -361,20 +363,16 @@ where
         }
     }
 
-    // TODO: use ElemType::unify
-    // fn elem_symbols(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
-    //     let mut elem_symbols_hd = AnElem::elem_symbol(PhantomData::<T>);
-    //     let elem_symbols_tl = Elems::elem_symbols(PhantomData::<U>)?;
-    //     if elem_symbols_hd.is_disjoint(elem_symbols_tl) {
-    //         elem_symbols_hd.union(elem_symbols_tl);
-    //         Ok(elem_symbols_hd)
-    //     } else {
-    //         Err(ElemsPopError::ElemSymbolsIntersect {
-    //             elem_symbols_hd: elem_symbols_hd,
-    //             elem_symbols_tl: elem_symbols_tl,
-    //         })
-    //     }
-    // }
+    // TODO: add info
+    fn elem_type(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
+        let elem_type_hd = ElemType {
+            type_set: AnElem::elem_symbol(PhantomData::<T>),
+            info: vec![],
+        };
+        let elem_type_tl = Elems::elem_type(PhantomData::<U>)?;
+        elem_type_hd.unify(elem_type_tl)
+            .map_err(|e| ElemsPopError::ElemTypeError(e))
+    }
 }
 
 impl<T, N, U> IElems for Or<T, N, U>
@@ -491,8 +489,8 @@ where
         })
     }
 
-    fn elem_symbols(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
-        Elems::elem_symbols(PhantomData::<Singleton<T, N>>)
+    fn elem_type(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
+        Elems::elem_type(PhantomData::<Singleton<T, N>>)
     }
 }
 
@@ -511,6 +509,20 @@ where
 
     fn returning(&self) -> Option<Elem> {
         self.returning.returned().map(|x| x.to_elem())
+    }
+
+    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
+        let num_inputs = <N as Unsigned>::to_usize();
+        let mut context = Context::new();
+        let type_id = context.push(ElemType {
+            type_set: AnElem::elem_symbol(PhantomData::<T>),
+            info: vec![],
+        });
+        Ok(Type {
+            context: context,
+            i_type: (1..num_inputs).into_iter().map(|_| type_id).collect(),
+            o_type: vec![type_id],
+        })
     }
 }
 
@@ -582,8 +594,8 @@ where
 
     }
 
-    fn elem_symbols(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
-        Elems::elem_symbols(PhantomData::<Or<T, N, U>>)
+    fn elem_type(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
+        Elems::elem_type(PhantomData::<Or<T, N, U>>)
     }
 }
 
@@ -614,6 +626,20 @@ where
             Self::Right(x) => x.returning(),
         }
     }
+
+    // TODO: add error info
+    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
+        let mut type_tl = IOElems::type_of(PhantomData::<U>)?;
+        let last_type_id = type_tl.context.max_type_id()
+            .map_err(|e| ElemsPopError::ReturnOrContextError(e))?;
+        let next_type_id = type_tl.context.push(ElemType {
+            type_set: AnElem::elem_symbol(PhantomData::<T>),
+            info: vec![],
+        });
+        type_tl.context.unify(last_type_id, next_type_id)
+            .map_err(|e| ElemsPopError::ReturnOrContextError(e))?;
+        Ok(type_tl)
+    }
 }
 
 
@@ -642,7 +668,7 @@ pub trait IsList: Clone + Debug + IntoIterator<Item = Elem> {
         }
     }
 
-    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError>;
+    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError>;
 
     fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
     where
@@ -653,13 +679,13 @@ pub trait IsList: Clone + Debug + IntoIterator<Item = Elem> {
             None => {
                 let original_stack = stack.clone();
                 let x = <Self::Hd as Elems>::pop(PhantomData, stack).map_err(|e| ElemsPopError::IsListHd {
-                    stack_type: IsList::elem_symbols_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
-                    elem_set: Elems::elem_symbols(PhantomData::<Self::Hd>).map_err(|e| Arc::new(e)),
+                    stack_type: IsList::elem_type_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
+                    elem_set: Elems::elem_type(PhantomData::<Self::Hd>).map_err(|e| Arc::new(e)),
                     stack: original_stack.clone(),
                     error: Arc::new(e),
                 })?;
                 let xs = <Self::Tl as IsList>::pop(PhantomData, stack).map_err(|e| ElemsPopError::IsListTl {
-                    stack_type: IsList::elem_symbols_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
+                    stack_type: IsList::elem_type_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
                     stack: original_stack.clone(),
                     error: Arc::new(e),
                 })?;
@@ -695,7 +721,7 @@ impl IsList for Nil {
         Self {}
     }
 
-    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
+    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
         Ok(vec![])
     }
 }
@@ -758,11 +784,11 @@ impl<T: Elems, U: IsList> IsList for Cons<T, U> {
         self.tl
     }
 
-    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
-        let elem_symbols_hd = Elems::elem_symbols(PhantomData::<T>)?;
-        let mut elem_symbols_vec_tl = IsList::elem_symbols_vec(PhantomData::<U>)?;
-        elem_symbols_vec_tl.insert(0, elem_symbols_hd);
-        Ok(elem_symbols_vec_tl)
+    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
+        let elem_type_hd = Elems::elem_type(PhantomData::<T>)?;
+        let mut elem_type_vec_tl = IsList::elem_type_vec(PhantomData::<U>)?;
+        elem_type_vec_tl.insert(0, elem_type_hd);
+        Ok(elem_type_vec_tl)
     }
 }
 
@@ -805,10 +831,11 @@ where
 
     // TODO: test
     fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
-        let num_elem_symbols_hd = <<T as Elems>::N as Unsigned>::to_usize();
-        let elem_symbols_hd = Elems::elem_symbols(PhantomData::<T>)?;
+        let num_elem_type_hd = <<T as Elems>::N as Unsigned>::to_usize();
+        let elem_type_hd = Elems::elem_type(PhantomData::<T>)?;
         let mut type_tl = IOList::type_of(PhantomData::<U>)?;
-        type_tl.prepend_inputs(num_elem_symbols_hd, elem_symbols_hd);
+
+        type_tl.prepend_inputs(num_elem_type_hd, elem_type_hd).collect());
         Ok(type_tl)
     }
 }
@@ -869,8 +896,8 @@ where
         self.cons.tl()
     }
 
-    fn elem_symbols_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
-        IsList::elem_symbols_vec(PhantomData::<Cons<T, U>>)
+    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
+        IsList::elem_type_vec(PhantomData::<Cons<T, U>>)
     }
 }
 
@@ -884,9 +911,17 @@ where
     fn returning(&self) -> Option<Elem> {
         self.cons.hd.returning()
     }
+
+    // TODO: add info to errors
+    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
+        // let num_elem_type_hd = <<T as Elems>::N as Unsigned>::to_usize();
+        let type_hd = IOElems::type_of(PhantomData::<T>)?;
+        let elem_type_tl = IsList::elem_type_vec(PhantomData::<U>)?;
+
+        type_hd.prepend_inputs(elem_type_tl);
+        Ok(type_hd)
+    }
 }
-
-
 
 
 

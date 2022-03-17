@@ -214,10 +214,11 @@ pub struct ElemTypeInfo {
     location: Location,
 }
 
+// TODO: make fields private?
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ElemType {
-    type_set: EnumSet<ElemSymbol>,
-    info: Vec<ElemTypeInfo>,
+    pub type_set: EnumSet<ElemSymbol>,
+    pub info: Vec<ElemTypeInfo>,
 }
 
 // Formatting:
@@ -364,7 +365,7 @@ impl ElemType {
     }
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Error)]
 pub enum ElemTypeError {
     #[error("ElemType::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
     UnifyEmpty {
@@ -379,6 +380,8 @@ pub enum ElemTypeError {
 
 
 pub trait AnElem: Clone + std::fmt::Debug + PartialEq {
+    // TODO: rename
+
     // fn elem_symbol(t: PhantomData<Self>) -> ElemType;
     fn elem_symbol(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
     fn to_elem(self) -> Elem;
