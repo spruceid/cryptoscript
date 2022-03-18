@@ -250,32 +250,33 @@ fn main() {
     let mut instructions_vec_t_2 = Instrs::new();
 
     // x["queries"]
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Map<String, Value>> });
     instructions_vec_t_2.instr(Push { push: "queries".to_string() });
     instructions_vec_t_2.instr(Lookup {});
     instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Vec<Value>> });
 
-    // x[0]
-    let zero: Number = From::from(0u8);
-    instructions_vec_t_2.instr(Push { push: zero });
-    instructions_vec_t_2.instr(Index {});
-    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Map<String, Value>> });
+    // // x[0]
+    // let zero: Number = From::from(0u8);
+    // instructions_vec_t_2.instr(Push { push: zero });
+    // instructions_vec_t_2.instr(Index {});
+    // instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Map<String, Value>> });
 
-    // x["action"] = "tokenbalance"
-    instructions_vec_t_2.restack(Restack::dup());
-    instructions_vec_t_2.instr(Push { push: "action".to_string() });
-    instructions_vec_t_2.instr(Lookup {});
-    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
-    instructions_vec_t_2.instr(CheckEq {});
-    instructions_vec_t_2.instr(AssertTrue {});
+    // // x["action"] = "tokenbalance"
+    // instructions_vec_t_2.restack(Restack::dup());
+    // instructions_vec_t_2.instr(Push { push: "action".to_string() });
+    // instructions_vec_t_2.instr(Lookup {});
+    // instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
+    // instructions_vec_t_2.instr(CheckEq {});
+    // instructions_vec_t_2.instr(AssertTrue {});
 
-    // x["contractaddress"] = "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
-    instructions_vec_t_2.restack(Restack::dup());
-    instructions_vec_t_2.instr(Push { push: "contractaddress".to_string() });
-    instructions_vec_t_2.instr(Lookup {});
-    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
-    instructions_vec_t_2.instr(Push { push: "0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string() });
-    instructions_vec_t_2.instr(CheckEq {});
-    instructions_vec_t_2.instr(AssertTrue {});
+    // // x["contractaddress"] = "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
+    // instructions_vec_t_2.restack(Restack::dup());
+    // instructions_vec_t_2.instr(Push { push: "contractaddress".to_string() });
+    // instructions_vec_t_2.instr(Lookup {});
+    // instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
+    // instructions_vec_t_2.instr(Push { push: "0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string() });
+    // instructions_vec_t_2.instr(CheckEq {});
+    // instructions_vec_t_2.instr(AssertTrue {});
 
     // // x["response"]["result"] = "135499"
     // Instruction::Restack(Restack::dup()),
@@ -376,8 +377,11 @@ fn main() {
     }
     println!("");
 
-    println!("{:?}\n", instructions_vec_t_2.run(&mut stack));
+    match instructions_vec_t_2.run(&mut stack) {
+        Ok(()) => (),
+        Err(e) => println!("failed:\n{}\n", e),
+    }
 
-    println!("FINAL STACK");
-    stack.debug();
+    // println!("FINAL STACK");
+    // stack.debug();
 }

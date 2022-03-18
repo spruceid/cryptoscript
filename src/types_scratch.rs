@@ -70,14 +70,14 @@ pub enum ElemsPopError {
     },
 
     // TODO: add detail
-    #[error("Elems::pop: generic_array internal error")]
+    #[error("Elems::pop: generic_array internal error\n\nelem_set:\n{elem_set:?}\n\nvec:\n{vec:?}\n\nsize:\n{size}")]
     GenericArray {
         elem_set: EnumSet<ElemSymbol>,
         vec: Vec<Elem>,
         size: usize,
     },
 
-    #[error("IsList::pop (Cons, Hd): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{elem_set:?}\n{stack:?}\n{error:?}")]
+    #[error("IsList::pop (Cons, Hd): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{elem_set:?}\n{stack:?}\n\nerror:\n{error}")]
     IsListHd {
         stack_type: Result<Vec<ElemType>, Arc<Self>>,
         elem_set: Result<ElemType, Arc<Self>>,
@@ -85,7 +85,7 @@ pub enum ElemsPopError {
         error: Arc<Self>,
     },
 
-    #[error("IsList::pop (Cons, Tl): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{stack:?}\n{error:?}")]
+    #[error("IsList::pop (Cons, Tl): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{stack:?}\n\nerror:\n{error}")]
     IsListTl {
         stack_type: Result<Vec<ElemType>, Arc<Self>>,
         stack: Stack,
@@ -189,7 +189,7 @@ where
     where
         Self: Sized,
     {
-        let vec = (1..<N as Unsigned>::to_usize()).map(|_array_ix| {
+        let vec = (0..<N as Unsigned>::to_usize()).map(|_array_ix| {
             stack
                 .pop_elem(PhantomData::<T>)
                 .map_err(|e| <ElemsPopError as From<StackError>>::from(e))
@@ -935,21 +935,26 @@ pub trait IsInstructionT: Clone + Debug + PartialEq {
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error>;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Error)]
 pub enum InstructionError {
+    #[error("InstructionError::ElemsPopError:\n{0}")]
     ElemsPopError(ElemsPopError),
 
+    #[error("RawInstructionError:\n{0}")]
     RawInstructionError(String),
 
+    #[error("MissingOutput:\n{instruction}\n\n{stack_input}")]
     // TODO: more granular error typing
     MissingOutput {
         instruction: String,
         stack_input: String,
     },
 
+    #[error("InstructionError::RestackError:\n{0}")]
     RestackError(RestackError),
 
-    DebugJsonError(serde_json::Error),
+    #[error("InstructionError::DebugJsonError:\n{0}")]
+    DebugJsonError(Arc<serde_json::Error>),
 }
 
 pub trait IsStackInstruction: Debug {
@@ -1024,26 +1029,33 @@ impl Instrs {
 
     pub fn run(&self, stack: &mut Stack) -> Result<(), InstructionError> {
         for instr_or_restack in &self.instrs {
-            stack.debug().map_err(|e| InstructionError::DebugJsonError(e))?;
+            stack.debug().map_err(|e| InstructionError::DebugJsonError(Arc::new(e)))?;
             println!("------------------------------------------------------------------------------------------");
             println!("#: {:?}\n", instr_or_restack);
             match instr_or_restack {
                 Ok(instr) => {
                     let mut instr_type = instr.type_of();
                     stack.debug_type();
+                    format!("");
+
                     match instr_type {
                         Ok(instr_type) => {
                             println!("instr: {}\n", instr_type);
                             let mut mut_instr_type = instr_type.clone();
-                            match mut_instr_type.specialize_to_input_stack(stack.clone().stack.into_iter().map(|x| x.elem_type(vec![])).collect()) {
+                            match mut_instr_type
+                                .specialize_to_input_stack(stack
+                                                           .clone()
+                                                           .stack
+                                                           .into_iter()
+                                                           .map(|x| x.elem_type(vec![]))
+                                                           .collect()) {
                                 Ok(specialized) => println!("specialized: {}\n", mut_instr_type),
-                                Err(e) => println!("specialization failed: {:?}\n", e),
+                                Err(e) => println!("specialization failed: {}\n", e),
                             }
                         },
-                        Err(e) => println!("instr type_of errror: {:?}\n", e),
+                        Err(e) => println!("instr type_of errror: {}\n", e),
                     }
                     println!("");
-
                     instr.stack_run(stack)?
                 },
                 Err(restack) => {

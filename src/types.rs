@@ -191,6 +191,13 @@ pub struct TypeId {
     type_id: usize,
 }
 
+
+impl Display for TypeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+       write!(f, "type#{}", self.type_id)
+    }
+}
+
 impl TypeId {
     // TODO: test by checking:
     // xs.map(TypeId).fold(x, offset) = TypeId(xs.fold(x, +))
@@ -494,6 +501,7 @@ impl Type {
         })
     }
 
+
     pub fn specialize_to_input_stack(&mut self, stack_type: Vec<ElemType>) -> Result<(), TypeError> {
         if self.i_type.len() <= stack_type.len() {
             let mut stack_type_iter = stack_type.into_iter();
@@ -501,7 +509,8 @@ impl Type {
                 self.context.unify_elem_type(type_id, elem_type).map_err(|e| TypeError::ContextError(e))?
             }
             for elem_type in stack_type_iter {
-                self.context.push(elem_type);
+                let type_id = self.context.push(elem_type);
+                self.i_type.push(type_id);
             }
             Ok(())
         } else {
@@ -700,16 +709,16 @@ pub enum TypeIdMapError {
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum ContextError {
-    #[error("Context::get applied to a TypeId: {index:?}, not in the Context: {context:?}, error: {error:?}")]
+    #[error("Context::get applied to a TypeId: \n{index:?}\n, not in the Context: \n{context:?}\n, error: \n{error:?}\n")]
     GetUnknownTypeId {
         context: Context,
         index: TypeId,
         error: Arc<Self>,
     },
 
-    #[error("Context::disjoint_union applied to lhs: {lhs:?}, and rhs: {rhs:?}, /
-            with type_id: {type_id:?}, and elem_type: {elem_type:?}, conflicted /
-            with lhs entry conflicting_elem_type: {conflicting_elem_type:?}")]
+    #[error("Context::disjoint_union applied to lhs: \n{lhs:?}\n, and rhs: \n{rhs:?}\n, /
+            with type_id: \n{type_id:?}\n, and elem_type: \n{elem_type:?}\n, conflicted /
+            with lhs entry conflicting_elem_type: {conflicting_elem_type:?\n}\n")]
     DisjointUnion {
         type_id: TypeId,
         elem_type: ElemType,
@@ -718,28 +727,28 @@ pub enum ContextError {
         rhs: Context,
     },
 
-    #[error("Context::normalize_on applied to invalid basis: type_id: {type_id:?}, context: {context:?}, basis: {basis:?}")]
+    #[error("Context::normalize_on applied to invalid basis: type_id: \n{type_id:?}\n, context: \n{context:?}\n, basis: \n{basis:?}\n")]
     NormalizeOnInvalidBasis {
         type_id: TypeId,
         context: Context,
         basis: Vec<TypeId>,
     },
 
-    #[error("Context::update_type_id called on missing 'from: TypeId':\n from: {from:?}\n to: {to:?}\n context: {context:?}")]
+    #[error("Context::update_type_id called on missing 'from: TypeId':\n from: \n{from:?}\n to: {to:?}\n context: {context:?}")]
     UpdateTypeIdFromMissing {
         from: TypeId,
         to: TypeId,
         context: Context,
     },
 
-    #[error("Context::update_type_id called on already-present 'to: TypeId':\n from: {from:?}\n to: {to:?}\n context: {context:?}")]
+    #[error("Context::update_type_id called on already-present 'to: TypeId':\n from: \n{from:?}\n\n to: \n{to:?}\n context: \n{context:?}\n")]
     UpdateTypeIdToPresent {
         from: TypeId,
         to: TypeId,
         context: Context,
     },
 
-    #[error("Context::unify failed:\n xs: {xs:?}\n xi: {xi:?}\n yi: {yi:?}\n is_lhs: {is_lhs:?}\n")]
+    #[error("Context::unify failed:\n xs: \n{xs:?}\n xi: \n{xi:?}\n yi: \n{yi:?}\n is_lhs: \n{is_lhs:?}\n")]
     Unify {
             xs: Context,
             xi: TypeId,
@@ -747,7 +756,7 @@ pub enum ContextError {
             is_lhs: bool,
     },
 
-    #[error("Context::unify failed to unify ElemType's:\n xs: {xs:?}\n xi: {xi:?}\n yi: {yi:?}\n elem_error: {error:?}\n")]
+    #[error("Context::unify failed to unify ElemType's:\n\nxs:\n{xs}\n\nxi:\n{xi}\n\nyi:\n{yi}\n\nelem_error:\n{error}\n")]
     UnifyElemType {
             xs: Context,
             xi: TypeId,
@@ -755,10 +764,10 @@ pub enum ContextError {
             error: ElemTypeError,
     },
 
-    #[error("Context::normalize_on building TypeIdMap failed: {0:?}")]
+    #[error("Context::normalize_on building TypeIdMap failed: \n{0:?}\n")]
     TypeIdMapError(TypeIdMapError),
 
-    #[error("Context::max_type_id: next_type_id == 0: {0:?}")]
+    #[error("Context::max_type_id: next_type_id == 0: \n{0:?}\n")]
     MaxTypeId(Context),
 }
 

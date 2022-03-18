@@ -367,7 +367,7 @@ impl ElemType {
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum ElemTypeError {
-    #[error("ElemType::unify applied to non-intersecting types: lhs: {lhs:?}; rhs: {rhs:?}")]
+    #[error("ElemType::unify applied to non-intersecting types:\nlhs:\n{lhs}\nrhs:\n{rhs}")]
     UnifyEmpty {
         lhs: ElemType,
         rhs: ElemType,
