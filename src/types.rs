@@ -418,6 +418,11 @@ impl Context {
         Ok(())
     }
 
+    pub fn unify_elem_type(&mut self, xi: TypeId, elem_type: ElemType) -> Result<(), ContextError> {
+        let yi = self.push(elem_type);
+        self.unify(xi, yi)
+    }
+
     // maximum possible, not maximum present
     pub fn max_type_id(&self) -> Result<TypeId, ContextError> {
         let type_id = self.next_type_id.type_id;
@@ -489,6 +494,24 @@ impl Type {
         })
     }
 
+    pub fn specialize_to_input_stack(&mut self, stack_type: Vec<ElemType>) -> Result<(), TypeError> {
+        if self.i_type.len() <= stack_type.len() {
+            let mut stack_type_iter = stack_type.into_iter();
+            for (type_id, elem_type) in self.i_type.clone().into_iter().zip(&mut stack_type_iter) {
+                self.context.unify_elem_type(type_id, elem_type).map_err(|e| TypeError::ContextError(e))?
+            }
+            for elem_type in stack_type_iter {
+                self.context.push(elem_type);
+            }
+            Ok(())
+        } else {
+            Err(TypeError::SpecializeToInputStack {
+                type_of: self.clone(),
+                stack_type: stack_type,
+            })
+        }
+    }
+
     // f : self
     // g : other
     // self.compose(other) : (f ++ g).type_of()
@@ -539,21 +562,26 @@ impl Type {
         })
     }
 
-    // generic iterable?
-    pub fn prepend_inputs(&mut self, elem_types: Vec<ElemType>) -> () {
-
-        // for elem_type in elem_types {
-        //     let type_id = self.context.push(elem_type);
-        //     self.i_type = 
-
-        //     _
-        // }
-
-        // if 0 < num_copies {
-        //     let type_id = self.context.push(elem_type);
-        //     self.i_type = (1..num_copies).into_iter().map(|_| type_id).chain(self.i_type.into_iter()).collect()
-        // }
+    pub fn prepend_inputs(&mut self, num_copies: usize, elem_type: ElemType) -> () {
+        if 0 < num_copies {
+            let type_id = self.context.push(elem_type);
+            self.i_type = (1..num_copies).into_iter()
+                .map(|_| type_id)
+                .chain(self.i_type.clone().into_iter())
+                .collect()
+        }
     }
+
+    pub fn append_inputs<T>(&mut self, elem_types: T) -> ()
+    where
+        T: IntoIterator<Item = ElemType>,
+    {
+        for elem_type in elem_types {
+            let type_id = self.context.push(elem_type);
+            self.i_type.push(type_id)
+        }
+    }
+
 }
 
 // Formatting:
@@ -754,6 +782,12 @@ pub enum TypeError {
 
     #[error("Type::normalize applying TypeIdMap failed: {0:?}")]
     TypeIdMapError(TypeIdMapError),
+
+    #[error("Type::specialize_to_input_stack: stack_type shorter than expected:\n{type_of}\n{stack_type:?}")]
+    SpecializeToInputStack {
+        type_of: Type,
+        stack_type: Vec<ElemType>,
+    },
 }
 
 

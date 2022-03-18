@@ -511,7 +511,7 @@ where
         self.returning.returned().map(|x| x.to_elem())
     }
 
-    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
+    fn type_of(_t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
         let num_inputs = <N as Unsigned>::to_usize();
         let mut context = Context::new();
         let type_id = context.push(ElemType {
@@ -628,7 +628,7 @@ where
     }
 
     // TODO: add error info
-    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
+    fn type_of(_t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
         let mut type_tl = IOElems::type_of(PhantomData::<U>)?;
         let last_type_id = type_tl.context.max_type_id()
             .map_err(|e| ElemsPopError::ReturnOrContextError(e))?;
@@ -721,7 +721,7 @@ impl IsList for Nil {
         Self {}
     }
 
-    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
+    fn elem_type_vec(_t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
         Ok(vec![])
     }
 }
@@ -784,7 +784,7 @@ impl<T: Elems, U: IsList> IsList for Cons<T, U> {
         self.tl
     }
 
-    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
+    fn elem_type_vec(_t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
         let elem_type_hd = Elems::elem_type(PhantomData::<T>)?;
         let mut elem_type_vec_tl = IsList::elem_type_vec(PhantomData::<U>)?;
         elem_type_vec_tl.insert(0, elem_type_hd);
@@ -830,12 +830,12 @@ where
     }
 
     // TODO: test
-    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
+    fn type_of(_t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
         let num_elem_type_hd = <<T as Elems>::N as Unsigned>::to_usize();
         let elem_type_hd = Elems::elem_type(PhantomData::<T>)?;
         let mut type_tl = IOList::type_of(PhantomData::<U>)?;
 
-        type_tl.prepend_inputs(num_elem_type_hd, elem_type_hd).collect());
+        type_tl.prepend_inputs(num_elem_type_hd, elem_type_hd);
         Ok(type_tl)
     }
 }
@@ -896,7 +896,7 @@ where
         self.cons.tl()
     }
 
-    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
+    fn elem_type_vec(_t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
         IsList::elem_type_vec(PhantomData::<Cons<T, U>>)
     }
 }
@@ -913,12 +913,12 @@ where
     }
 
     // TODO: add info to errors
-    fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
+    fn type_of(_t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
         // let num_elem_type_hd = <<T as Elems>::N as Unsigned>::to_usize();
-        let type_hd = IOElems::type_of(PhantomData::<T>)?;
+        let mut type_hd = IOElems::type_of(PhantomData::<T>)?;
         let elem_type_tl = IsList::elem_type_vec(PhantomData::<U>)?;
 
-        type_hd.prepend_inputs(elem_type_tl);
+        type_hd.append_inputs(elem_type_tl);
         Ok(type_hd)
     }
 }
@@ -1029,7 +1029,21 @@ impl Instrs {
             println!("#: {:?}\n", instr_or_restack);
             match instr_or_restack {
                 Ok(instr) => {
-                    println!("instr: {:?}\n", instr.type_of());
+                    let mut instr_type = instr.type_of();
+                    stack.debug_type();
+                    match instr_type {
+                        Ok(instr_type) => {
+                            println!("instr: {}\n", instr_type);
+                            let mut mut_instr_type = instr_type.clone();
+                            match mut_instr_type.specialize_to_input_stack(stack.clone().stack.into_iter().map(|x| x.elem_type(vec![])).collect()) {
+                                Ok(specialized) => println!("specialized: {}\n", mut_instr_type),
+                                Err(e) => println!("specialization failed: {:?}\n", e),
+                            }
+                        },
+                        Err(e) => println!("instr type_of errror: {:?}\n", e),
+                    }
+                    println!("");
+
                     instr.stack_run(stack)?
                 },
                 Err(restack) => {

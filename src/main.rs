@@ -376,7 +376,8 @@ fn main() {
     }
     println!("");
 
-    println!("{:?}", instructions_vec_t_2.run(&mut stack));
+    println!("{:?}\n", instructions_vec_t_2.run(&mut stack));
+
     println!("FINAL STACK");
-    println!("{:?}", stack);
+    stack.debug();
 }
