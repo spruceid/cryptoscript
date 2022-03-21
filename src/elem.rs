@@ -42,8 +42,6 @@ impl PartialOrd for Elem {
     }
 }
 
-// println!("{:x?}", 
-
 impl Display for Elem {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
@@ -333,14 +331,12 @@ impl Elem {
 
 impl ElemType {
     fn from_locations(type_set: EnumSet<ElemSymbol>,
-                      // base_elem_type: BaseElemType,
                       locations: Vec<Location>) -> Self {
         ElemType {
             type_set: type_set,
             info: locations.iter()
                 .map(|&location|
                      ElemTypeInfo {
-                         // base_elem_type: base_elem_type,
                          location: location,
                     }).collect(),
         }
@@ -349,31 +345,8 @@ impl ElemType {
     pub fn any(locations: Vec<Location>) -> Self {
         Self::from_locations(
             EnumSet::all(),
-            // BaseElemType::Any,
             locations)
     }
-
-    // pub fn concat_type(locations: Vec<Location>) -> Self {
-    //     Self::from_locations(
-    //         enum_set!(ElemSymbol::Bytes |
-    //                   ElemSymbol::String |
-    //                   ElemSymbol::Array |
-    //                   ElemSymbol::Object),
-    //         // BaseElemType::Concat,
-    //         locations)
-    // }
-
-    // pub fn index_type(locations: Vec<Location>) -> Self {
-    //     Self::from_locations(
-    //         enum_set!(ElemSymbol::Array |
-    //                   ElemSymbol::Object),
-    //         // BaseElemType::Index,
-    //         locations)
-    // }
-
-    // pub fn slice_type(locations: Vec<Location>) -> Self {
-    //     Self::concat_type(locations)
-    // }
 
     pub fn union(&self, other: Self) -> Result<Self, ElemTypeError> {
         let both = self.type_set.union(other.type_set);
@@ -409,7 +382,6 @@ pub enum ElemTypeError {
     UnifyEmpty {
         lhs: ElemType,
         rhs: ElemType,
-        // location: TyUnifyLocation,
     },
 }
 

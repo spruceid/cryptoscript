@@ -819,10 +819,6 @@ impl<T: IOElems, U: IList> IntoIterator for ConsOut<T, U> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.cons.into_iter()
-        // IterCons {
-        //     cons: self.cons,
-        //     at_head: true,
-        // }
     }
 }
 
@@ -899,6 +895,7 @@ pub enum Instruction {
     CheckLt,
     CheckEq,
     StringEq,
+    BytesEq,
     Concat,
     Slice,
     Index,
@@ -1039,9 +1036,10 @@ impl Instrs {
     }
 
     pub fn run(&self, stack: &mut Stack) -> Result<(), StackInstructionError> {
-        for instr_or_restack in &self.instrs {
+        for (line_no, instr_or_restack) in (&self.instrs).into_iter().enumerate() {
             stack.debug().map_err(|e| StackInstructionError::DebugJsonError(Arc::new(e)))?;
             println!("------------------------------------------------------------------------------------------");
+            println!("line_no: {}", line_no);
             println!("{:?}\n", instr_or_restack);
             match instr_or_restack {
                 Instr::Instr(instr) => {
@@ -1789,140 +1787,43 @@ impl IsInstructionT for StringEq {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BytesEq {}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BytesEqError {
+    lhs: Vec<u8>,
+    rhs: Vec<u8>,
+}
+impl AnError for BytesEqError {}
 
+impl IsInstructionT for BytesEq {
+    type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<Singleton<Vec<u8>, U2>, Nil>>;
+    type Error = BytesEqError;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::BytesEq)
+    }
 
+    fn name(_x: PhantomData<Self>) -> String {
+        "check_eq".to_string()
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Cons<Or<U, <Singleton<T>>, Nil>
-
-// ( {U, T} )
-
-// Cons<Returning<Or<U, <Singleton<T>>>, Nil>
-
-// ( {U, T} ) -> {U, T}
-
-
-// forall x, .. z. IsIn {A, B, C} x, .. => [x, x, y, Bool, y] -> [x, Bool]
-
-// Or < Singleton
-// ReturningOr< ReturningSingleton
-
-
-// <in, out>
-// Instruction<in, out>
-// Instruction<in, out>
-// Instruction<in, out>
-// Instruction<in, out>
-
-
-// [A, B, C]
-// Instruction<in, out>
-// [A, B, C]
-
-
-
-// Or<T, Singleton<()>>
-
-// Or<(), Singleton<()>>
-
-// Or<T, U: SetWithout<T>>
-
-// IsNot<T: AnElem, U: AnElem>
-
-// Dict<dyn IsEq<T, U>> -> Empty
-
-
-
-
-
-// impl<T, N, U: Elems> AnElem for Or<T, U> {
-//     fn elem_symbol(_t: PhantomData<Self>) -> ElemType {
-//         let t_set = <T as AnElem>::elem_symbol(PhantomData);
-//         let u_set = <U as AnElem>::elem_symbol(PhantomData);
-//         t_set.union(u_set)
-//     }
-
-//     fn to_elem(self) -> Elem {
-//         match self {
-//             Self::Left(x) => x.to_elem(),
-//             Self::Right(x) => x.to_elem(),
-//         }
-//     }
-
-//     fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
-//         AnElem::from_elem(PhantomData::<T>, x.clone())
-//             .map(|y| Or::Left(y))
-//             .or_else(|e_hd| {
-//                Ok(Or::Right(AnElem::from_elem(PhantomData::<U>, x)?))
-//                    .map_err(|e_tl| {
-//                        AnElemError::PopOr {
-//                            e_hd: Box::new(e_hd),
-//                            e_tl: Box::new(e_tl),
-//                        }})
-//             })
-//     }
-// }
-
-
-
-
-
-
-// // TODO: relocate LineNo, ArgumentIndex, Location
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-// pub struct LineNo {
-//     pub line_no: usize,
-// }
-
-// impl From<usize> for LineNo {
-//     fn from(line_no: usize) -> Self {
-//         LineNo {
-//             line_no: line_no,
-//         }
-//     }
-// }
-
-// pub type ArgumentIndex = usize;
-
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-// pub struct Location {
-//     line_no: LineNo,
-//     argument_index: ArgumentIndex,
-//     is_input: bool,
-// }
-
-// impl LineNo {
-//     pub fn in_at(&self, argument_index: usize) -> Location {
-//         Location {
-//             line_no: *self,
-//             argument_index: argument_index,
-//             is_input: true,
-//         }
-//     }
-
-//     pub fn out_at(&self, argument_index: usize) -> Location {
-//         Location {
-//             line_no: *self,
-//             argument_index: argument_index,
-//             is_input: false,
-//         }
-//     }
-// }
-
+    fn run(&self, x: &Self::IO) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let array = &x.clone().tl().hd().array;
+        let lhs = array[0].clone();
+        let rhs = array[1].clone();
+        let cmp_result = lhs.partial_cmp(&rhs)
+            .ok_or_else(|| BytesEqError {
+                lhs: lhs,
+                rhs: rhs
+        })?;
+        let result = match cmp_result {
+            cmp::Ordering::Equal => true,
+            _ => false,
+        };
+        returning.returning(result);
+        Ok(())
+    }
+}
 
