@@ -1,8 +1,11 @@
-use cryptoscript::{parse_json, Elem, ElemSymbol, Executor, Instruction, Instructions, Restack};
+use cryptoscript::{parse_json, Elem, ElemSymbol, Instruction, Instructions, Restack};
+use cryptoscript::{Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, StringEq};
+use cryptoscript::{Cli};
 
-use cryptoscript::{Stack, Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq};
-// use cryptoscript::{demo_triple, demo_triple_with_tl_handles_intermediate_types, HList};
 use std::marker::PhantomData;
+
+use clap::{Parser};
+// use cryptoscript::{demo_triple, demo_triple_with_tl_handles_intermediate_types, HList};
 use serde_json::{Map, Number, Value};
 
 #[cfg(test)]
@@ -30,7 +33,7 @@ mod tests {
 
 fn main() {
 
-    let input_json = r#"
+    let _input_json = r#"
         {
           "queries": [
             {
@@ -255,28 +258,31 @@ fn main() {
     instructions_vec_t_2.instr(Lookup {});
     instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Vec<Value>> });
 
-    // // x[0]
-    // let zero: Number = From::from(0u8);
-    // instructions_vec_t_2.instr(Push { push: zero });
-    // instructions_vec_t_2.instr(Index {});
-    // instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Map<String, Value>> });
+    // x[0]
+    let zero: Number = From::from(0u8);
+    instructions_vec_t_2.instr(Push { push: zero });
+    instructions_vec_t_2.instr(Index {});
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<Map<String, Value>> });
 
-    // // x["action"] = "tokenbalance"
-    // instructions_vec_t_2.restack(Restack::dup());
-    // instructions_vec_t_2.instr(Push { push: "action".to_string() });
-    // instructions_vec_t_2.instr(Lookup {});
-    // instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
-    // instructions_vec_t_2.instr(CheckEq {});
-    // instructions_vec_t_2.instr(AssertTrue {});
+    // x["action"] = "tokenbalance"
+    instructions_vec_t_2.restack(Restack::dup());
+    instructions_vec_t_2.instr(Push { push: "action".to_string() });
+    instructions_vec_t_2.instr(Lookup {});
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
+    instructions_vec_t_2.instr(Push { push: "tokenbalance".to_string() });
+    instructions_vec_t_2.instr(StringEq {});
+    instructions_vec_t_2.instr(AssertTrue {});
+    instructions_vec_t_2.restack(Restack::drop());
 
-    // // x["contractaddress"] = "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
-    // instructions_vec_t_2.restack(Restack::dup());
-    // instructions_vec_t_2.instr(Push { push: "contractaddress".to_string() });
-    // instructions_vec_t_2.instr(Lookup {});
-    // instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
-    // instructions_vec_t_2.instr(Push { push: "0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string() });
-    // instructions_vec_t_2.instr(CheckEq {});
-    // instructions_vec_t_2.instr(AssertTrue {});
+    // x["contractaddress"] = "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
+    instructions_vec_t_2.restack(Restack::dup());
+    instructions_vec_t_2.instr(Push { push: "contractaddress".to_string() });
+    instructions_vec_t_2.instr(Lookup {});
+    instructions_vec_t_2.instr(UnpackJson { t: PhantomData::<String> });
+    instructions_vec_t_2.instr(Push { push: "0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string() });
+    instructions_vec_t_2.instr(StringEq {});
+    instructions_vec_t_2.instr(AssertTrue {});
+    instructions_vec_t_2.restack(Restack::drop());
 
     // // x["response"]["result"] = "135499"
     // Instruction::Restack(Restack::dup()),
@@ -367,21 +373,26 @@ fn main() {
     // Instruction::CheckEq,
     // Instruction::AssertTrue,
 
-    let mut stack = Stack::new();
-    let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
-    stack.push_elem(input_json_value);
 
-    println!("instructions:");
-    for instruction in &instructions_vec_t_2.instrs {
-        println!("{:?}", instruction);
-    }
-    println!("");
+    // let json_instructions = serde_json::to_string_pretty(&serde_json::to_value(instructions_vec_t_2.to_instructions().unwrap().clone()).unwrap()).unwrap();
+    // println!("json_instructions:\n\n{}", json_instructions);
 
-    match instructions_vec_t_2.run(&mut stack) {
-        Ok(()) => (),
-        Err(e) => println!("failed:\n{}\n", e),
-    }
+    // let mut stack = Stack::new();
+    // let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
+    // stack.push_elem(input_json_value);
 
-    // println!("FINAL STACK");
-    // stack.debug();
+    // println!("instructions:");
+    // for instruction in &instructions_vec_t_2.instrs {
+    //     println!("{:?}", instruction);
+    // }
+    // println!("");
+
+    // match instructions_vec_t_2.run(&mut stack) {
+    //     Ok(()) => (),
+    //     Err(e) => println!("failed:\n{}\n", e),
+    // }
+    //
+
+    let cli = Cli::parse();
+    cli.run();
 }

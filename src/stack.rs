@@ -1,12 +1,12 @@
 // use crate::restack::{RestackError};
-use crate::elem::{Elem, AnElem, AnElemError, ElemSymbol};
+use crate::elem::{Elem, StackType, AnElem, AnElemError, ElemSymbol};
 
 // use std::collections::BTreeMap;
 // use std::cmp;
 // use std::iter::{FromIterator};
 
-// use std::fmt;
-// use std::fmt::{Display, Formatter};
+use std::fmt;
+use std::fmt::{Display, Formatter};
 // // use std::alloc::string;
 // use std::marker::PhantomData;
 // use std::sync::Arc;
@@ -26,6 +26,18 @@ use typenum::marker_traits::Unsigned;
 pub struct Stack {
     pub stack: Vec<Elem>,
 }
+
+impl Display for Stack {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_list()
+            .entries(self.stack
+                     .iter()
+                     .map(|x| format!("{}", x)))
+            .finish()?;
+        Ok(())
+    }
+}
+
 
 impl Stack {
     pub fn new() -> Self {
@@ -70,11 +82,14 @@ impl Stack {
         GenericArray::from_exact_iter(xs).ok_or_else(|| StackError::TODO)
     }
 
+    pub fn type_of(&self) -> StackType {
+        StackType {
+            types: self.stack.clone().into_iter().map(|x| x.elem_type(vec![])).collect(),
+        }
+    }
+
     pub fn debug_type(&self) -> () {
-        println!("stack type: {:?}",
-                 &self.stack.clone().into_iter()
-                 .map(|x| x.symbol_str())
-                 .collect::<Vec<&'static str>>())
+        println!("stack type:\n{}", self.type_of())
     }
 
     pub fn debug(&self) -> Result<(), serde_json::Error> {
@@ -95,10 +110,10 @@ pub enum StackError {
     #[error("Stack::pop: tried to pop from an empty stack")]
     EmptyStack,
 
-    #[error("Stack:pop_elem threw an error from AnElem {0:?}")]
+    #[error("Stack:pop_elem threw an error from AnElem\n{0}")]
     AnElemError(AnElemError),
 
-    #[error("pop: element popped from the stack {found:?} wasn't the expected type {expected:?} (remaining stack: {stack:?})")]
+    #[error("pop: element popped from the stack {found:?} wasn't the expected type {expected:?} (remaining stack: {stack})")]
     UnexpectedElemTypeIn {
         expected: EnumSet<ElemSymbol>,
         found: Elem,

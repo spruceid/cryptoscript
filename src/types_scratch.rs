@@ -1,4 +1,4 @@
-use crate::elem::{Elem, ElemType, ElemTypeError, ElemSymbol, AnElem};
+use crate::elem::{Elem, ElemType, ElemTypeError, ElemSymbol, StackType, AnElem};
 use crate::stack::{Stack, StackError};
 use crate::restack::{Restack, RestackError};
 use crate::types::{Context, ContextError, Type, Empty, AnError, Nil};
@@ -7,6 +7,7 @@ use std::cmp;
 use std::convert::TryFrom;
 // use std::iter::FromIterator;
 use std::marker::PhantomData;
+// use std::fmt;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::string::FromUtf8Error;
@@ -16,6 +17,7 @@ use generic_array::functional::FunctionalSequence;
 use generic_array::sequence::GenericSequence;
 use generic_array::typenum::{U0, U1, U2};
 use generic_array::{GenericArray, GenericArrayIter, ArrayLength};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 use typenum::marker_traits::Unsigned;
@@ -58,12 +60,13 @@ where
 
 #[derive(Clone, Debug, Error)]
 pub enum ElemsPopError {
-    #[error("Elems::pop singleton: tried to pop an Elem that was not found: {error:?}")]
+    #[error("Elems::pop singleton: tried to pop an Elem that was not found:\nelem_symbol:\n{elem_symbol:?}\n\n{error}")]
     PopSingleton {
+        elem_symbol: EnumSet<ElemSymbol>,
         error: StackError,
     },
 
-    #[error("Elems::pop: tried to pop a set of Elem's that were not found: {hd_error:?}\n{tl_errors:?}")]
+    #[error("Elems::pop: tried to pop a set of Elem's that were not found:\n{hd_error}\n\n{tl_errors}")]
     Pop {
         hd_error: Arc<Self>,
         tl_errors: Arc<Self>,
@@ -77,34 +80,29 @@ pub enum ElemsPopError {
         size: usize,
     },
 
-    #[error("IsList::pop (Cons, Hd): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{elem_set:?}\n{stack:?}\n\nerror:\n{error}")]
+    #[error("IsList::pop (Cons, Hd): tried to pop a set of Elem's that were not found:\nstack_type:\n{stack_type}\n\nelem_set:\n{elem_set}\n\nstack_type:\n{stack_type_of}\n\nerror:\n{error}")]
     IsListHd {
-        stack_type: Result<Vec<ElemType>, Arc<Self>>,
-        elem_set: Result<ElemType, Arc<Self>>,
-        stack: Stack,
+        stack_type: StackType,
+        elem_set: ElemType,
+        stack_type_of: StackType,
         error: Arc<Self>,
     },
 
-    #[error("IsList::pop (Cons, Tl): tried to pop a set of Elem's that were not found:\n{stack_type:?}\n{stack:?}\n\nerror:\n{error}")]
+    #[error("IsList::pop (Cons, Tl): tried to pop a set of Elem's that were not found:\nstack_type:\n{stack_type}\n\nstack_type_of:\n{stack_type_of}\n\nerror:\n{error}")]
     IsListTl {
-        stack_type: Result<Vec<ElemType>, Arc<Self>>,
-        stack: Stack,
+        stack_type: StackType,
+        stack_type_of: StackType,
         error: Arc<Self>,
     },
 
     #[error("Elems::elem_type (Or): Set includes repeated type: {0:?}")]
     ElemTypeError(ElemTypeError),
 
+    #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding Tl type: {0:?}")]
+    ReturnOrTl(Arc<ElemsPopError>),
+
     #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding type: {0:?}")]
     ReturnOrContextError(ContextError),
-}
-
-impl From<StackError> for ElemsPopError {
-    fn from(error: StackError) -> Self {
-        Self::PopSingleton {
-            error: error,
-        }
-    }
 }
 
 pub trait Elems: Clone + Debug + IntoIterator<Item = Elem> {
@@ -192,7 +190,10 @@ where
         let vec = (0..<N as Unsigned>::to_usize()).map(|_array_ix| {
             stack
                 .pop_elem(PhantomData::<T>)
-                .map_err(|e| <ElemsPopError as From<StackError>>::from(e))
+                .map_err(|e| ElemsPopError::PopSingleton {
+                    elem_symbol: AnElem::elem_symbol(PhantomData::<T>),
+                    error: e,
+                })
         }).collect::<Result<Vec<T>, ElemsPopError>>()?;
         let array = GenericArray::from_exact_iter(vec.clone()).ok_or_else(|| {
             ElemsPopError::GenericArray {
@@ -214,48 +215,6 @@ where
         })
     }
 }
-
-
-// // TODO: relocate LineNo, ArgumentIndex, Location
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-// pub struct LineNo {
-//     pub line_no: usize,
-// }
-
-// impl From<usize> for LineNo {
-//     fn from(line_no: usize) -> Self {
-//         LineNo {
-//             line_no: line_no,
-//         }
-//     }
-// }
-
-// pub type ArgumentIndex = usize;
-
-// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-// pub struct Location {
-//     line_no: LineNo,
-//     argument_index: ArgumentIndex,
-//     is_input: bool,
-// }
-
-// impl LineNo {
-//     pub fn in_at(&self, argument_index: usize) -> Location {
-//         Location {
-//             line_no: *self,
-//             argument_index: argument_index,
-//             is_input: true,
-//         }
-//     }
-
-//     pub fn out_at(&self, argument_index: usize) -> Location {
-//         Location {
-//             line_no: *self,
-//             argument_index: argument_index,
-//             is_input: false,
-//         }
-//     }
-// }
 
 
 impl<T, N> IElems for Singleton<T, N>
@@ -370,7 +329,7 @@ where
             info: vec![],
         };
         let elem_type_tl = Elems::elem_type(PhantomData::<U>)?;
-        elem_type_hd.unify(elem_type_tl)
+        elem_type_hd.union(elem_type_tl)
             .map_err(|e| ElemsPopError::ElemTypeError(e))
     }
 }
@@ -629,7 +588,8 @@ where
 
     // TODO: add error info
     fn type_of(_t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
-        let mut type_tl = IOElems::type_of(PhantomData::<U>)?;
+        let mut type_tl = IOElems::type_of(PhantomData::<U>)
+            .map_err(|e| ElemsPopError::ReturnOrTl(Arc::new(e)))?;
         let last_type_id = type_tl.context.max_type_id()
             .map_err(|e| ElemsPopError::ReturnOrContextError(e))?;
         let next_type_id = type_tl.context.push(ElemType {
@@ -668,7 +628,7 @@ pub trait IsList: Clone + Debug + IntoIterator<Item = Elem> {
         }
     }
 
-    fn elem_type_vec(t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError>;
+    fn stack_type(t: PhantomData<Self>) -> Result<StackType, ElemsPopError>;
 
     fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
     where
@@ -678,17 +638,17 @@ pub trait IsList: Clone + Debug + IntoIterator<Item = Elem> {
             Some(x) => Ok(x),
             None => {
                 let original_stack = stack.clone();
-                let x = <Self::Hd as Elems>::pop(PhantomData, stack).map_err(|e| ElemsPopError::IsListHd {
-                    stack_type: IsList::elem_type_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
-                    elem_set: Elems::elem_type(PhantomData::<Self::Hd>).map_err(|e| Arc::new(e)),
-                    stack: original_stack.clone(),
+                let x = <Self::Hd as Elems>::pop(PhantomData, stack).or_else(|e| Err(ElemsPopError::IsListHd {
+                    stack_type: IsList::stack_type(PhantomData::<Self>)?,
+                    elem_set: Elems::elem_type(PhantomData::<Self::Hd>)?,
+                    stack_type_of: original_stack.clone().type_of(),
                     error: Arc::new(e),
-                })?;
-                let xs = <Self::Tl as IsList>::pop(PhantomData, stack).map_err(|e| ElemsPopError::IsListTl {
-                    stack_type: IsList::elem_type_vec(PhantomData::<Self>).map_err(|e| Arc::new(e)),
-                    stack: original_stack.clone(),
+                }))?;
+                let xs = <Self::Tl as IsList>::pop(PhantomData, stack).or_else(|e| Err(ElemsPopError::IsListTl {
+                    stack_type: IsList::stack_type(PhantomData::<Self>)?,
+                    stack_type_of: original_stack.clone().type_of(),
                     error: Arc::new(e),
-                })?;
+                }))?;
                 Ok(<Self as IsList>::cons_list(x, xs))
             }
         }
@@ -721,8 +681,10 @@ impl IsList for Nil {
         Self {}
     }
 
-    fn elem_type_vec(_t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
-        Ok(vec![])
+    fn stack_type(_t: PhantomData<Self>) -> Result<StackType, ElemsPopError> {
+        Ok(StackType {
+            types: vec![],
+        })
     }
 }
 
@@ -784,11 +746,12 @@ impl<T: Elems, U: IsList> IsList for Cons<T, U> {
         self.tl
     }
 
-    fn elem_type_vec(_t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
+    fn stack_type(_t: PhantomData<Self>) -> Result<StackType, ElemsPopError> {
         let elem_type_hd = Elems::elem_type(PhantomData::<T>)?;
-        let mut elem_type_vec_tl = IsList::elem_type_vec(PhantomData::<U>)?;
-        elem_type_vec_tl.insert(0, elem_type_hd);
-        Ok(elem_type_vec_tl)
+        let elem_type_hd_count = <<T as Elems>::N as Unsigned>::to_usize();
+        let mut stack_type_tl = IsList::stack_type(PhantomData::<U>)?;
+        stack_type_tl.push_n(elem_type_hd, elem_type_hd_count);
+        Ok(stack_type_tl)
     }
 }
 
@@ -896,8 +859,8 @@ where
         self.cons.tl()
     }
 
-    fn elem_type_vec(_t: PhantomData<Self>) -> Result<Vec<ElemType>, ElemsPopError> {
-        IsList::elem_type_vec(PhantomData::<Cons<T, U>>)
+    fn stack_type(_t: PhantomData<Self>) -> Result<StackType, ElemsPopError> {
+        IsList::stack_type(PhantomData::<Cons<T, U>>)
     }
 }
 
@@ -916,7 +879,7 @@ where
     fn type_of(_t: PhantomData<Self>) -> Result<Type, ElemsPopError> {
         // let num_elem_type_hd = <<T as Elems>::N as Unsigned>::to_usize();
         let mut type_hd = IOElems::type_of(PhantomData::<T>)?;
-        let elem_type_tl = IsList::elem_type_vec(PhantomData::<U>)?;
+        let elem_type_tl = IsList::stack_type(PhantomData::<U>)?;
 
         type_hd.append_inputs(elem_type_tl);
         Ok(type_hd)
@@ -927,21 +890,41 @@ where
 
 
 
-pub trait IsInstructionT: Clone + Debug + PartialEq {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+pub enum Instruction {
+    Push(Elem),
+    Restack(Restack),
+    HashSha256,
+    CheckLe,
+    CheckLt,
+    CheckEq,
+    StringEq,
+    Concat,
+    Slice,
+    Index,
+    Lookup,
+    AssertTrue,
+    ToJson,
+    UnpackJson(ElemSymbol),
+    StringToBytes,
+}
+
+pub trait IsInstructionT: Debug {
     type IO: IOList;
     type Error: AnError;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError>;
     fn name(x: PhantomData<Self>) -> String;
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error>;
 }
 
 #[derive(Clone, Debug, Error)]
-pub enum InstructionError {
-    #[error("InstructionError::ElemsPopError:\n{0}")]
+pub enum StackInstructionError {
+    #[error("StackInstructionError::ElemsPopError:\n{0}")]
     ElemsPopError(ElemsPopError),
 
-    #[error("RawInstructionError:\n{0}")]
-    RawInstructionError(String),
+    #[error("RawStackInstructionError:\n{0}")]
+    RawStackInstructionError(String),
 
     #[error("MissingOutput:\n{instruction}\n\n{stack_input}")]
     // TODO: more granular error typing
@@ -950,23 +933,35 @@ pub enum InstructionError {
         stack_input: String,
     },
 
-    #[error("InstructionError::RestackError:\n{0}")]
+    #[error("StackInstructionError::RestackError:\n{0}")]
     RestackError(RestackError),
 
-    #[error("InstructionError::DebugJsonError:\n{0}")]
+    #[error("StackInstructionError::DebugJsonError:\n{0}")]
     DebugJsonError(Arc<serde_json::Error>),
+
+    #[error("UnpackJsonNotSingleton:\n{first_value:?}\n{second_value:?}")]
+    UnpackJsonNotSingleton {
+        first_value: Option<ElemSymbol>,
+        second_value: Option<ElemSymbol>,
+    },
+
 }
 
 pub trait IsStackInstruction: Debug {
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError>;
     fn name(&self) -> String;
     fn type_of(&self) -> Result<Type, ElemsPopError>;
-    fn stack_run(&self, stack: &mut Stack) -> Result<(), InstructionError>;
+    fn stack_run(&self, stack: &mut Stack) -> Result<(), StackInstructionError>;
 }
 
 impl<T> IsStackInstruction for T
 where
     T: IsInstructionT,
 {
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        self.to_instruction()
+    }
+
     fn name(&self) -> String {
         IsInstructionT::name(PhantomData::<Self>)
     }
@@ -975,14 +970,14 @@ where
         IOList::type_of(PhantomData::<<T as IsInstructionT>::IO>)
     }
 
-    fn stack_run(&self, stack: &mut Stack) -> Result<(), InstructionError> {
+    fn stack_run(&self, stack: &mut Stack) -> Result<(), StackInstructionError> {
         let stack_input = &IsList::pop(PhantomData::<<T as IsInstructionT>::IO>, stack)
-            .map_err(|e| InstructionError::ElemsPopError(e))?;
+            .map_err(|e| StackInstructionError::ElemsPopError(e))?;
         self.run(stack_input)
-            .map_err(|e| InstructionError::RawInstructionError(format!("{:?}", e)))?;
+            .map_err(|e| StackInstructionError::RawStackInstructionError(format!("{:?}", e)))?;
         let output_value = stack_input
             .returning()
-            .ok_or_else(|| InstructionError::MissingOutput {
+            .ok_or_else(|| StackInstructionError::MissingOutput {
                 instruction: format!("{:?}", self),
                 stack_input: format!("{:?}", stack_input),
             })?;
@@ -994,9 +989,25 @@ where
 
 
 #[derive(Clone, Debug)]
+pub enum Instr {
+    Instr(Arc<dyn IsStackInstruction>),
+    Restack(Restack),
+}
+
+impl Instr {
+    pub fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        match self {
+            Self::Instr(instr) => instr.to_instruction(),
+            Self::Restack(restack) => Ok(Instruction::Restack(restack.clone())),
+        }
+    }
+}
+
+
+#[derive(Clone, Debug)]
 pub struct Instrs {
     // TODO: replace Result with Either?
-    pub instrs: Vec<Result<Arc<dyn IsStackInstruction>, Restack>>,
+    pub instrs: Vec<Instr>,
 }
 
 // fn example_instrs() -> Instrs {
@@ -1027,30 +1038,28 @@ impl Instrs {
         }
     }
 
-    pub fn run(&self, stack: &mut Stack) -> Result<(), InstructionError> {
+    pub fn run(&self, stack: &mut Stack) -> Result<(), StackInstructionError> {
         for instr_or_restack in &self.instrs {
-            stack.debug().map_err(|e| InstructionError::DebugJsonError(Arc::new(e)))?;
+            stack.debug().map_err(|e| StackInstructionError::DebugJsonError(Arc::new(e)))?;
             println!("------------------------------------------------------------------------------------------");
-            println!("#: {:?}\n", instr_or_restack);
+            println!("{:?}\n", instr_or_restack);
             match instr_or_restack {
-                Ok(instr) => {
-                    let mut instr_type = instr.type_of();
+                Instr::Instr(instr) => {
+                    println!("");
                     stack.debug_type();
-                    format!("");
-
-                    match instr_type {
+                    match instr.type_of() {
                         Ok(instr_type) => {
                             println!("instr: {}\n", instr_type);
                             let mut mut_instr_type = instr_type.clone();
                             match mut_instr_type
-                                .specialize_to_input_stack(stack
-                                                           .clone()
-                                                           .stack
-                                                           .into_iter()
-                                                           .map(|x| x.elem_type(vec![]))
-                                                           .collect()) {
-                                Ok(specialized) => println!("specialized: {}\n", mut_instr_type),
-                                Err(e) => println!("specialization failed: {}\n", e),
+                                .specialize_to_input_stack(stack.type_of()) {
+                                                           // .clone()
+                                                           // .stack
+                                                           // .into_iter()
+                                                           // .map(|x| x.elem_type(vec![]))
+                                                           // .collect()) {
+                                Ok(()) => println!("specialized: {}\n", mut_instr_type),
+                                Err(e) => println!("specialization failed:\n{}\n", e),
                             }
                         },
                         Err(e) => println!("instr type_of errror: {}\n", e),
@@ -1058,22 +1067,25 @@ impl Instrs {
                     println!("");
                     instr.stack_run(stack)?
                 },
-                Err(restack) => {
-                    println!("restack: {:?}\n", restack);
+                Instr::Restack(restack) => {
                     restack.run(&mut stack.stack)
-                        .map_err(|e| InstructionError::RestackError(e))?
+                        .map_err(|e| StackInstructionError::RestackError(e))?
                 },
             }
         }
+        println!("------------------------------------------------------------------------------------------");
+        println!("Finished running successfully.\n");
+        println!("Final stack:");
+        stack.debug().map_err(|e| StackInstructionError::DebugJsonError(Arc::new(e)))?;
         Ok(())
     }
 
     pub fn instr(&mut self, instr: impl IsStackInstruction + 'static) -> () {
-        self.instrs.push(Ok(Arc::new(instr)))
+        self.instrs.push(Instr::Instr(Arc::new(instr)))
     }
 
     pub fn restack(&mut self, restack: Restack) -> () {
-        self.instrs.push(Err(restack))
+        self.instrs.push(Instr::Restack(restack))
     }
 }
 
@@ -1098,6 +1110,10 @@ impl IsInstructionT for Concat {
                       ReturnOr<Vec<Value>,          U2,
                ReturnSingleton<Map<String, Value>,  U2>>>, Nil>;
     type Error = ConcatError;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::Concat)
+    }
 
     fn name(_x: PhantomData<Self>) -> String {
         "concat".to_string()
@@ -1137,6 +1153,10 @@ impl IsInstructionT for AssertTrue {
     // TODO: replace w/ Empty
     type Error = AssertTrueError;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::AssertTrue)
+    }
+
     fn name(_x: PhantomData<Self>) -> String {
         "assert_true".to_string()
     }
@@ -1163,6 +1183,10 @@ impl<T: AnElem> IsInstructionT for Push<T> {
     type IO = ConsOut<ReturnSingleton<T, U0>, Nil>;
     type Error = Empty;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::Push(self.push.clone().to_elem()))
+    }
+
     fn name(_x: PhantomData<Self>) -> String {
         format!("push_{:?}", AnElem::elem_symbol(PhantomData::<T>))
     }
@@ -1184,6 +1208,10 @@ impl AnError for HashSha256Error {}
 impl IsInstructionT for HashSha256 {
     type IO = ConsOut<ReturnSingleton<Vec<u8>, U1>, Nil>;
     type Error = Empty;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::HashSha256)
+    }
 
     fn name(_x: PhantomData<Self>) -> String {
         "sha256".to_string()
@@ -1237,6 +1265,10 @@ impl IsInstructionT for Slice {
                ReturnSingleton<Map<String, Value>,  U1>>>>,
                 Cons<Singleton<Number,              U2>, Nil>>;
     type Error = SliceError;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::Slice)
+    }
 
     fn name(_x: PhantomData<Self>) -> String {
         "slice".to_string()
@@ -1325,10 +1357,14 @@ impl AnError for IndexError {}
 // bytes, array, object
 impl IsInstructionT for Index {
     type IO = ConsOut<ReturnSingleton<Value,                U0>,
-                              Cons<Or<Vec<Value>,           U2,
-                            Singleton<Map<String, Value>,   U2>>,
-                       Cons<Singleton<Number,               U1>, Nil>>>;
+                       Cons<Singleton<Number,               U1>,
+                              Cons<Or<Vec<Value>,           U1,
+                            Singleton<Map<String, Value>,   U1>>, Nil>>>;
     type Error = IndexError;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::Index)
+    }
 
     fn name(_x: PhantomData<Self>) -> String {
         "index".to_string()
@@ -1336,11 +1372,12 @@ impl IsInstructionT for Index {
 
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
-        let y = x.clone().tl().hd();
-        let index = &x.clone().tl().tl().hd().array[0];
+        let index = x.clone().tl().hd().array[0].clone();
+        let y = &x.clone().tl().tl().hd();
         let u_index = index.as_u64()
             .ok_or_else(|| IndexError::IndexNotU64(index.clone()))
             .and_then(|x| usize::try_from(x).map_err(|_| IndexError::Overflow(index.clone())))?;
+
         let result = match y.clone() {
             Or::Left(array) => {
                 array[0]
@@ -1382,6 +1419,10 @@ impl IsInstructionT for ToJson {
     type IO = ConsOut<ReturnSingleton<Value, U0>, Cons<AllElems<U1>, Nil>>;
     type Error = ToJsonError;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::ToJson)
+    }
+
     fn name(_x: PhantomData<Self>) -> String {
         "to_json".to_string()
     }
@@ -1415,6 +1456,10 @@ impl IsInstructionT for Lookup {
                  Cons<Singleton<Map<String, Value>, U1>, Nil>>>;
     type Error = LookupError;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::Lookup)
+    }
+
     fn name(_x: PhantomData<Self>) -> String {
         "lookup".to_string()
     }
@@ -1433,17 +1478,17 @@ impl IsInstructionT for Lookup {
 }
 
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct UnpackJson<T: AnElem> {
     pub t: PhantomData<T>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct UnpackJsonError {}
 impl AnError for UnpackJsonError {}
 
 trait AJsonElem: AnElem {
     fn to_value(self) -> Value;
-    fn from_value(t: PhantomData<Self>, x: Value) -> Option<Self>;
+    fn from_value(t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized;
 }
 
 impl AJsonElem for () {
@@ -1451,7 +1496,7 @@ impl AJsonElem for () {
         Value::Null
     }
 
-    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized {
         match x {
             Value::Null => Some(()),
             _ => None,
@@ -1464,7 +1509,7 @@ impl AJsonElem for bool {
         Value::Bool(self)
     }
 
-    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized {
         match x {
             Value::Bool(y) => Some(y),
             _ => None,
@@ -1477,7 +1522,7 @@ impl AJsonElem for Number {
         Value::Number(self)
     }
 
-    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized {
         match x {
             Value::Number(y) => Some(y),
             _ => None,
@@ -1490,7 +1535,7 @@ impl AJsonElem for String {
         Value::String(self)
     }
 
-    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized {
         match x {
             Value::String(y) => Some(y),
             _ => None,
@@ -1503,7 +1548,7 @@ impl AJsonElem for Vec<Value> {
         Value::Array(self)
     }
 
-    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized {
         match x {
             Value::Array(y) => Some(y),
             _ => None,
@@ -1516,7 +1561,7 @@ impl AJsonElem for Map<String, Value> {
         Value::Object(self)
     }
 
-    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> {
+    fn from_value(_t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized {
         match x {
             Value::Object(y) => Some(y),
             _ => None,
@@ -1528,6 +1573,17 @@ impl<T: AJsonElem> IsInstructionT for UnpackJson<T> {
     type IO = ConsOut<ReturnSingleton<T, U0>,
                        Cons<Singleton<Value, U1>, Nil>>;
     type Error = UnpackJsonError;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        let mut symbol_set = <T as AnElem>::elem_symbol(PhantomData).into_iter();
+        match (symbol_set.next(), symbol_set.next()) {
+            (Some(elem_symbol), None) => Ok(Instruction::UnpackJson(elem_symbol)),
+            (x, y) => Err(StackInstructionError::UnpackJsonNotSingleton {
+                first_value: x,
+                second_value: y,
+            }),
+        }
+    }
 
     fn name(_x: PhantomData<Self>) -> String {
         "unpack_json".to_string()
@@ -1551,6 +1607,10 @@ pub struct StringToBytes {}
 impl IsInstructionT for StringToBytes {
     type IO = ConsOut<ReturnSingleton<Vec<u8>, U0>, Cons<Singleton<String, U1>, Nil>>;
     type Error = Empty;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::StringToBytes)
+    }
 
     fn name(_x: PhantomData<Self>) -> String {
         "string_to_bytes".to_string()
@@ -1576,6 +1636,10 @@ impl AnError for CheckLeError {}
 impl IsInstructionT for CheckLe {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
     type Error = CheckLeError;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::CheckLe)
+    }
 
     fn name(_x: PhantomData<Self>) -> String {
         "check_le".to_string()
@@ -1615,6 +1679,10 @@ impl IsInstructionT for CheckLt {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
     type Error = CheckLtError;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::CheckLt)
+    }
+
     fn name(_x: PhantomData<Self>) -> String {
         "check_lt".to_string()
     }
@@ -1653,6 +1721,10 @@ impl IsInstructionT for CheckEq {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
     type Error = CheckEqError;
 
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::CheckEq)
+    }
+
     fn name(_x: PhantomData<Self>) -> String {
         "check_eq".to_string()
     }
@@ -1665,6 +1737,46 @@ impl IsInstructionT for CheckEq {
         let rhs = array[1].clone();
         let cmp_result = lhs.partial_cmp(&rhs)
             .ok_or_else(|| CheckEqError {
+                lhs: lhs,
+                rhs: rhs
+        })?;
+        let result = match cmp_result {
+            cmp::Ordering::Equal => true,
+            _ => false,
+        };
+        returning.returning(result);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StringEq {}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StringEqError {
+    lhs: String,
+    rhs: String,
+}
+impl AnError for StringEqError {}
+
+impl IsInstructionT for StringEq {
+    type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<Singleton<String, U2>, Nil>>;
+    type Error = StringEqError;
+
+    fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
+        Ok(Instruction::StringEq)
+    }
+
+    fn name(_x: PhantomData<Self>) -> String {
+        "check_eq".to_string()
+    }
+
+    fn run(&self, x: &Self::IO) -> Result<(), Self::Error> {
+        let returning = x.clone().hd().returning;
+        let array = &x.clone().tl().hd().array;
+        let lhs = array[0].clone();
+        let rhs = array[1].clone();
+        let cmp_result = lhs.partial_cmp(&rhs)
+            .ok_or_else(|| StringEqError {
                 lhs: lhs,
                 rhs: rhs
         })?;
@@ -1735,8 +1847,6 @@ impl IsInstructionT for CheckEq {
 
 // Dict<dyn IsEq<T, U>> -> Empty
 
-// IsEq<const Ajfijw>
-//     type IsEqBool: const bool;
 
 
 
@@ -1772,5 +1882,47 @@ impl IsInstructionT for CheckEq {
 
 
 
+
+
+// // TODO: relocate LineNo, ArgumentIndex, Location
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+// pub struct LineNo {
+//     pub line_no: usize,
+// }
+
+// impl From<usize> for LineNo {
+//     fn from(line_no: usize) -> Self {
+//         LineNo {
+//             line_no: line_no,
+//         }
+//     }
+// }
+
+// pub type ArgumentIndex = usize;
+
+// #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+// pub struct Location {
+//     line_no: LineNo,
+//     argument_index: ArgumentIndex,
+//     is_input: bool,
+// }
+
+// impl LineNo {
+//     pub fn in_at(&self, argument_index: usize) -> Location {
+//         Location {
+//             line_no: *self,
+//             argument_index: argument_index,
+//             is_input: true,
+//         }
+//     }
+
+//     pub fn out_at(&self, argument_index: usize) -> Location {
+//         Location {
+//             line_no: *self,
+//             argument_index: argument_index,
+//             is_input: false,
+//         }
+//     }
+// }
 
 

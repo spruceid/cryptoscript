@@ -8,15 +8,17 @@ mod stack;
 pub use stack::{Stack, StackError};
 mod types;
 mod types_scratch;
-pub use types_scratch::{Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq};
+pub use types_scratch::{Instruction, Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq, StringEq};
 // pub use types::{Instruction, Instructions};
 // , demo_triple, demo_triple_with_tl_handles_intermediate_types, HList
 mod instruction;
-pub use instruction::{Instruction, Instructions};
+pub use instruction::{Instructions};
 mod parse;
 pub use parse::{parse, parse_json};
 mod executor;
 pub use executor::Executor;
+mod cli;
+pub use cli::Cli;
 
 use sha2::{Digest, Sha256};
 

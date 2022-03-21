@@ -5,9 +5,9 @@ use thiserror::Error;
 
 use std::cmp;
 use std::fmt;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
-use std::iter::{IntoIterator};
+use std::iter::{FromIterator, IntoIterator};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -41,6 +41,34 @@ impl PartialOrd for Elem {
         }
     }
 }
+
+// println!("{:x?}", 
+
+impl Display for Elem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::Unit => write!(f, "()"),
+            Self::Bool(x) => write!(f, "{}", x),
+            Self::Number(x) => write!(f, "{}", x),
+            Self::Bytes(x) => write!(f, "{}", hex::encode(x.as_slice())),
+            Self::String(x) => write!(f, "{}", x),
+            Self::Array(x) => {
+                f.debug_list()
+                    .entries(x.iter()
+                             .map(|x| format!("{}", x)))
+                    .finish()
+            },
+            Self::Object(x) => {
+                f.debug_list()
+                    .entries(x.iter()
+                             .map(|(x, y)| format!("({}, {})", x.clone(), y.clone())))
+                    .finish()
+            },
+            Self::Json(x) => write!(f, "{}", x),
+        }
+    }
+}
+
 
 
 // EnumSetType implies: Copy, PartialEq, Eq
@@ -347,6 +375,16 @@ impl ElemType {
     //     Self::concat_type(locations)
     // }
 
+    pub fn union(&self, other: Self) -> Result<Self, ElemTypeError> {
+        let both = self.type_set.union(other.type_set);
+        let mut both_info = self.info.clone();
+        both_info.append(&mut other.info.clone());
+        Ok(ElemType {
+            type_set: both,
+            info: both_info,
+        })
+    }
+
     pub fn unify(&self, other: Self) -> Result<Self, ElemTypeError> {
         let both = self.type_set.intersection(other.type_set);
         if both.is_empty() {
@@ -377,6 +415,91 @@ pub enum ElemTypeError {
 
 
 
+// BEGIN DebugAsDisplay
+#[derive(Clone, PartialEq, Eq)]
+struct DebugAsDisplay<T>
+where
+    T: Display,
+{
+    t: T,
+}
+
+impl<T> Display for DebugAsDisplay<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.t)
+    }
+}
+
+impl<T> Debug for DebugAsDisplay<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.t)
+    }
+}
+// END DebugAsDisplay
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StackType {
+    pub types: Vec<ElemType>,
+}
+
+impl IntoIterator for StackType {
+    type Item = ElemType;
+    type IntoIter = <Vec<ElemType> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.types.into_iter()
+    }
+}
+
+impl FromIterator<ElemType> for StackType {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = ElemType>,
+    {
+        StackType {
+            types: FromIterator::from_iter(iter),
+        }
+    }
+}
+
+impl StackType {
+    pub fn len(&self) -> usize {
+        self.types.len()
+    }
+
+    pub fn push(&mut self, elem_type: ElemType) -> () {
+        self.types.insert(0, elem_type)
+    }
+
+    pub fn push_n(&mut self, elem_type: ElemType, count: usize) -> () {
+        for _index in 0..count {
+            self.push(elem_type.clone())
+        }
+    }
+}
+
+// Uses DebugAsDisplay to eliminate '"' around strings:
+// ["{Number}", "{Array, Object}"] -> [{Number}, {Array, Object}]
+impl Display for StackType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_list()
+            .entries(self.types
+                     .iter()
+                     .map(|x| DebugAsDisplay { t: format!("{}", x) }))
+            .finish()?;
+        Ok(())
+    }
+}
+
+
+
+
 
 
 pub trait AnElem: Clone + std::fmt::Debug + PartialEq {
@@ -387,6 +510,21 @@ pub trait AnElem: Clone + std::fmt::Debug + PartialEq {
     fn to_elem(self) -> Elem;
     fn from_elem(t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError>;
 }
+
+impl AnElem for Elem {
+    fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
+        EnumSet::all()
+    }
+
+    fn to_elem(self) -> Elem {
+        self
+    }
+
+    fn from_elem(_t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError> {
+        Ok(x)
+    }
+}
+
 
 impl AnElem for () {
     fn elem_symbol(_t: PhantomData<Self>) -> EnumSet<ElemSymbol> {
@@ -559,7 +697,7 @@ impl AnElem for Value {
 
 #[derive(Clone, Debug, Error)]
 pub enum AnElemError {
-    #[error("AnElem::from_elem: element popped from the stack {found:?} wasn't the expected type {expected:?}")]
+    #[error("AnElem::from_elem: element popped from the stack\n\n{found}\n\nwasn't the expected type:\n{expected:?}")]
     UnexpectedElemType {
         expected: EnumSet<ElemSymbol>,
         found: Elem,

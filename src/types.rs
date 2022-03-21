@@ -1,5 +1,5 @@
 // use crate::restack::{RestackError};
-use crate::elem::{Elem, ElemType, ElemTypeError};
+use crate::elem::{Elem, ElemType, ElemTypeError, StackType};
 
 // Stack, StackError, LineNo, 
 // use crate::stack::{Location};
@@ -493,7 +493,7 @@ impl Type {
         let mut basis = self.i_type.clone();
         basis.append(&mut self.o_type.clone());
         basis.dedup();
-        let (new_context, type_map) = self.context.normalize_on(basis).map_err(|e| TypeError::ContextError(e))?;
+        let (new_context, type_map) = self.context.normalize_on(basis).map_err(|e| TypeError::NormalizeContextError(e))?;
         Ok(Type {
             context: new_context,
             i_type: type_map.run(self.i_type.clone()).map_err(|e| TypeError::TypeIdMapError(e))?,
@@ -502,11 +502,18 @@ impl Type {
     }
 
 
-    pub fn specialize_to_input_stack(&mut self, stack_type: Vec<ElemType>) -> Result<(), TypeError> {
+    pub fn specialize_to_input_stack(&mut self, stack_type: StackType) -> Result<(), TypeError> {
         if self.i_type.len() <= stack_type.len() {
             let mut stack_type_iter = stack_type.into_iter();
             for (type_id, elem_type) in self.i_type.clone().into_iter().zip(&mut stack_type_iter) {
-                self.context.unify_elem_type(type_id, elem_type).map_err(|e| TypeError::ContextError(e))?
+                // TODO: elimate copy?
+                let elem_type_copy = elem_type.clone();
+                self.context.unify_elem_type(type_id, elem_type).map_err(|e| TypeError::Specialization {
+                    type_id: type_id,
+                    elem_type: elem_type_copy,
+                    context: self.context.clone(),
+                    error: e,
+                })?
             }
             for elem_type in stack_type_iter {
                 let type_id = self.context.push(elem_type);
@@ -547,7 +554,7 @@ impl Type {
         // println!("offset_other: {}", offset_other);
 
         context.disjoint_union(offset_other.context.clone())
-            .map_err(|e| TypeError::ContextError(e))?;
+            .map_err(|e| TypeError::ComposeContextError(e))?;
         // println!("context union: {}", context);
 
         let mut mut_offset_other = offset_other.clone();
@@ -558,7 +565,7 @@ impl Type {
             zip_len += 1;
             context
                 .unify(o_type, i_type)
-                .map_err(|e| TypeError::ContextError(e))?;
+                .map_err(|e| TypeError::ComposeContextError(e))?;
             mut_offset_other
                 .update_type_id(o_type, i_type)?;
             Ok(())
@@ -780,8 +787,19 @@ impl From<TypeIdMapError> for ContextError {
 
 #[derive(Debug, PartialEq, Error)]
 pub enum TypeError {
-    #[error("ContextError {0}")]
-    ContextError(ContextError),
+    #[error("Specialization error:\ntype_id:\n{type_id}\n\nelem_type:\n{elem_type}\n\ncontext:\n{context}\n\nerror:\n{error}")]
+    Specialization {
+        type_id: TypeId,
+        elem_type: ElemType,
+        context: Context,
+        error: ContextError,
+    },
+
+    #[error("NormalizeContextError {0}")]
+    NormalizeContextError(ContextError),
+
+    #[error("ComposeContextError {0}")]
+    ComposeContextError(ContextError),
 
     #[error("TypeError::update_type_id failed when updating the Context: {0}")]
     UpdateTypeId(ContextError),
@@ -792,10 +810,11 @@ pub enum TypeError {
     #[error("Type::normalize applying TypeIdMap failed: {0:?}")]
     TypeIdMapError(TypeIdMapError),
 
-    #[error("Type::specialize_to_input_stack: stack_type shorter than expected:\n{type_of}\n{stack_type:?}")]
+    // TODO: use StackType and Display instead of Vec
+    #[error("Type::specialize_to_input_stack: stack_type shorter than expected:\n{type_of}\n{stack_type}")]
     SpecializeToInputStack {
         type_of: Type,
-        stack_type: Vec<ElemType>,
+        stack_type: StackType,
     },
 }
 
