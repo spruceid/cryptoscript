@@ -9,6 +9,8 @@ pub use stack::{Stack, StackError};
 mod types;
 mod types_scratch;
 pub use types_scratch::{Instruction, Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq, StringEq};
+mod json_template;
+pub use json_template::{TMap, TValue, Template};
 // pub use types::{Instruction, Instructions};
 // , demo_triple, demo_triple_with_tl_handles_intermediate_types, HList
 mod instruction;

@@ -2,9 +2,11 @@ use cryptoscript::{parse_json, Elem, ElemSymbol, Instruction, Instructions};
 use cryptoscript::{Restack, Stack, Instrs};
 use cryptoscript::{AssertTrue, Push, Lookup, UnpackJson, Index, StringEq, CheckEq};
 use cryptoscript::{Cli};
+use cryptoscript::{TMap, TValue, Template};
 
 use std::marker::PhantomData;
 
+// use indexmap::IndexMap;
 use clap::{Parser};
 use serde_json::{Map, Number, Value};
 
@@ -311,5 +313,46 @@ fn main() {
         Ok(()) => (),
         Err(e) => println!("failed:\n{}\n", e),
     }
+
+
+    println!("");
+    println!("");
+    println!("Template test:");
+
+    // ERC-20 token balance (currently)
+
+    // GET
+    // https://api.etherscan.io/api
+    //    ?module=account
+    //    &action=tokenbalance
+    //    &contractaddress=0x57d90b64a1a57749b0f932f1a3395792e12e7055
+    //    &address=0xe04f27eb70e025b78871a2ad7eabe85e61212761
+    //    &tag=latest
+    //    &apikey=YourApiKeyToken
+
+    let mut variables = Map::new();
+    variables.insert("contractaddress".to_string(), Value::String("0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string()));
+    variables.insert("address".to_string(), Value::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string()));
+    variables.insert("apikey".to_string(), Value::String("YourApiKeyToken".to_string()));
+
+    let mut template = TMap::new();
+    template.insert("type".to_string(), TValue::String("GET".to_string()));
+    template.insert("URL".to_string(), TValue::String("https://api.etherscan.io/api".to_string()));
+
+    let mut query_parameters = TMap::new();
+    query_parameters.insert("module".to_string(), TValue::String("account".to_string()));
+    query_parameters.insert("action".to_string(), TValue::String("tokenbalance".to_string()));
+    query_parameters.insert("contractaddress".to_string(), TValue::Var("contractaddress".to_string()));
+    query_parameters.insert("address".to_string(), TValue::Var("address".to_string()));
+    query_parameters.insert("tag".to_string(), TValue::String("latest".to_string()));
+    query_parameters.insert("apikey".to_string(), TValue::Var("apikey".to_string()));
+    template.insert("parameters".to_string(), TValue::Object(query_parameters));
+
+    let template = Template {
+        variables: variables,
+        template: TValue::Object(template),
+    };
+
+    println!("{:?}", template.run());
 
 }
