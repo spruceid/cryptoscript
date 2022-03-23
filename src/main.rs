@@ -3,6 +3,7 @@ use cryptoscript::{Restack, Stack, Instrs};
 use cryptoscript::{AssertTrue, Push, Lookup, UnpackJson, Index, StringEq, CheckEq};
 use cryptoscript::{Cli};
 use cryptoscript::{TMap, TValue, Template};
+use cryptoscript::{Query, QueryType};
 
 use std::marker::PhantomData;
 
@@ -33,9 +34,10 @@ mod tests {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 
-    let input_json = r#"
+    let _input_json = r#"
         {
           "queries": [
             {
@@ -288,31 +290,38 @@ fn main() {
     //     Err(e) => println!("failed:\n{}\n", e),
     // }
 
-    // let cli = Cli::parse();
-    // cli.run();
 
-    let mut stack = Stack::new();
-    let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
-    stack.push_elem(input_json_value);
 
-    println!("instructions:");
-    for instruction in instructions.clone() {
-        println!("{:?}", instruction);
-    }
-    println!("");
 
-    let instructions_vec_t_3 = match instructions.to_instrs() {
-        Ok(instructions_vec_t) => instructions_vec_t,
-        Err(e) => {
-            println!("Instructions::to_instrs() failed:\n{}", e);
-            panic!("Instructions::to_instrs() failed:\n{}", e)
-        },
-    };
 
-    match instructions_vec_t_3.run(&mut stack) {
-        Ok(()) => (),
-        Err(e) => println!("failed:\n{}\n", e),
-    }
+
+    // let mut stack = Stack::new();
+    // let input_json_value: serde_json::Value = serde_json::from_str(input_json).unwrap();
+    // stack.push_elem(input_json_value);
+
+    // println!("instructions:");
+    // for instruction in instructions.clone() {
+    //     println!("{:?}", instruction);
+    // }
+    // println!("");
+
+    // let instructions_vec_t_3 = match instructions.to_instrs() {
+    //     Ok(instructions_vec_t) => instructions_vec_t,
+    //     Err(e) => {
+    //         println!("Instructions::to_instrs() failed:\n{}", e);
+    //         panic!("Instructions::to_instrs() failed:\n{}", e)
+    //     },
+    // };
+
+    // match instructions_vec_t_3.run(&mut stack) {
+    //     Ok(()) => (),
+    //     Err(e) => println!("failed:\n{}\n", e),
+    // }
+
+
+
+
+
 
 
     println!("");
@@ -346,13 +355,66 @@ fn main() {
     query_parameters.insert("address".to_string(), TValue::Var("address".to_string()));
     query_parameters.insert("tag".to_string(), TValue::String("latest".to_string()));
     query_parameters.insert("apikey".to_string(), TValue::Var("apikey".to_string()));
-    template.insert("parameters".to_string(), TValue::Object(query_parameters));
+    template.insert("parameters".to_string(), TValue::Object(query_parameters.clone()));
 
-    let template = Template {
+    let _full_template = Template {
         variables: variables,
         template: TValue::Object(template),
     };
 
-    println!("{:?}", template.run());
+    // let json_template = serde_json::to_string_pretty(&serde_json::to_value(full_template.clone()).unwrap()).unwrap();
+    // println!("{}", json_template);
 
+    // {
+    //   "variables": {
+    //     "contractaddress": "0x57d90b64a1a57749b0f932f1a3395792e12e7055",
+    //     "address": "0xe04f27eb70e025b78871a2ad7eabe85e61212761",
+    //     "apikey": "YourApiKeyToken"
+    //   },
+    //   "template": {
+    //     "Object": {
+    //       "type": {
+    //         "String": "GET"
+    //       },
+    //       "URL": {
+    //         "String": "https://api.etherscan.io/api"
+    //       },
+    //       "parameters": {
+    //         "Object": {
+    //           "module": {
+    //             "String": "account"
+    //           },
+    //           "action": {
+    //             "String": "tokenbalance"
+    //           },
+    //           "contractaddress": {
+    //             "Var": "contractaddress"
+    //           },
+    //           "address": {
+    //             "Var": "address"
+    //           },
+    //           "tag": {
+    //             "String": "latest"
+    //           },
+    //           "apikey": {
+    //             "Var": "apikey"
+    //           }
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
+
+    // let query = Query {
+    //     name: "erc20".to_string(),
+    //     url: "https://api.etherscan.io/api".to_string(),
+    //     template: TValue::Object(query_parameters),
+    //     cached: true,
+    //     query_type: QueryType::Get,
+    // };
+    // let json_query = serde_json::to_string_pretty(&serde_json::to_value(query.clone()).unwrap()).unwrap();
+    // println!("{}", json_query);
+
+    let cli = Cli::parse();
+    cli.run().await;
 }

@@ -15,6 +15,19 @@ use indexmap::{IndexMap};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
+//// BEGIN query
+use reqwest::Client;
+use std::fs;
+use std::path::PathBuf;
+
+// use futures::executor::block_on;
+// use futures::executor::ThreadPool;
+// use futures::executor::LocalPool;
+
+// use std::io;
+//// END query
+
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TMap<T> {
     map: IndexMap<String, T>,
@@ -162,4 +175,131 @@ impl Template {
         self.template.run(self.variables)
     }
 }
+
+
+
+
+
+
+
+
+
+//// BEGIN query
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QueryType {
+    Get,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Query {
+    pub name: String,
+    pub url: String,
+    pub template: TValue,
+    pub cached: bool,
+    pub query_type: QueryType,
+}
+
+#[derive(Clone, Debug, Error)]
+pub enum QueryError {
+    #[error("Query::get_cached: not cached:\n{name:?}\n{url:?}")]
+    NotCached {
+        name: String,
+        url: String,
+    },
+
+    #[error("TValueRunError:\n{0:?}")]
+    TValueRunError(TValueRunError),
+
+    #[error("ReqwestError:\n{0}")]
+    ReqwestError(Arc<reqwest::Error>),
+
+    #[error("StdIoError:\n{0}")]
+    StdIoError(Arc<std::io::Error>),
+
+    #[error("SerdeJsonError:\n{0}")]
+    SerdeJsonError(Arc<serde_json::Error>),
+}
+
+impl From<TValueRunError> for QueryError {
+    fn from(error: TValueRunError) -> Self {
+        Self::TValueRunError(error)
+    }
+}
+
+impl From<reqwest::Error> for QueryError {
+    fn from(error: reqwest::Error) -> Self {
+        Self::ReqwestError(Arc::new(error))
+    }
+}
+
+impl From<std::io::Error> for QueryError {
+    fn from(error: std::io::Error) -> Self {
+        Self::StdIoError(Arc::new(error))
+    }
+}
+
+impl From<serde_json::Error> for QueryError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::SerdeJsonError(Arc::new(error))
+    }
+}
+
+impl Query {
+    pub async fn get_cached(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
+        if self.cached {
+            let cache_str = fs::read_to_string(cache_location)?;
+            let cache: Map<String, Value> = serde_json::from_str(&cache_str)?;
+            let cache_index = format!("{:?}:{:?}", self.name, variables);
+            cache.get(&cache_index).ok_or_else(|| {
+                QueryError::NotCached {
+                    name: self.name,
+                    url: self.url,
+            }}).map(|x| x.clone())
+        } else {
+            Err(QueryError::NotCached {
+                name: self.name,
+                url: self.url,
+            })
+        }
+    }
+
+    pub async fn run(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
+        // let pool = ThreadPool::new().unwrap();
+        // let mut pool = LocalPool::new();
+        // let mut rt = tokio::runtime::Runtime::new().unwrap();
+        // let future = async { /* ... */ };
+
+        let ran_template = self.clone().template.run(variables.clone())?;
+        // let result_block = async {
+        let result_block = {
+            match self.clone().get_cached(variables, cache_location).await {
+                Ok(result) => Ok(result),
+                Err(_e) => {
+                    match self.query_type {
+                        QueryType::Get => {
+                            let client = Client::new();
+                            let result = client.get(self.url)
+                                .json(&ran_template)
+                                .send()
+                                .await
+                                .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
+                            Ok(result.json().await.map_err(|e| QueryError::ReqwestError(Arc::new(e)))?)
+                        },
+                    }
+                },
+            }
+        };
+
+        result_block.map_err(|e| QueryError::ReqwestError(Arc::new(e)))
+        // Ok(result_block)
+
+        // Ok(result_block.wait()?)
+
+        // // pool.spawn_ok(result_block);
+        // // pool.run_until(result_block).map_err(|e| QueryError::ReqwestError(Arc::new(e)))
+        // rt.block_on(result_block).map_err(|e| QueryError::ReqwestError(Arc::new(e)))
+    }
+}
+//// END query
+
 
