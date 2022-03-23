@@ -3,9 +3,17 @@ name = "cryptoscript"
 version = "0.1.0"
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "cryptoscript"
+path = "src/main.rs"
+
+[[bin]]
+name = "rest-api"
+path = "src/rest-api.rs"
 
 [dependencies]
+actix-web = { version = "4.0.1", default-features = false, features = ["macros"] }
+
 clap = { version = "3.1.6", features = ["derive"] }
 enumset = { version = "1.0.8", features = ["serde"] }
 futures = { version = "0.3.21", features = ["executor", "thread-pool"] }
