@@ -244,6 +244,21 @@ impl From<serde_json::Error> for QueryError {
     }
 }
 
+// display query
+// rate limit
+// debug caching
+// cache per "api host"
+//
+// get variables from cli
+// output specialized type
+// calculate full type
+//
+// next:
+// - stack var labels
+// - execution traces (call graphs)
+// - error type/handling
+// - TEST
+
 impl Query {
     pub async fn get_cached(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
         if self.cached {

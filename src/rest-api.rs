@@ -18,12 +18,45 @@ use serde::{Deserialize, Serialize};
 // - get all apis as list
 // - top level: link to /apis and provide example
 
+// TODO:
+// - implement post
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Api {
     request: Value,
     response: Value,
     rate_limit_seconds: u64,
     last_api_call: Option<SystemTime>,
+}
+
+impl Api {
+    pub fn check_rate_limit(&self) -> Result<(), String> {
+        match self.last_api_call {
+            None => Ok(()),
+            Some(last_call_time) => {
+                let elapsed_seconds = last_call_time
+                    .elapsed()
+                    .map_err(|e| format!("internal SystemTime error: {:?}", e))?
+                    .as_secs();
+                if self.rate_limit_seconds <= elapsed_seconds {
+                    Ok(())
+                } else {
+                    Err(format!("rate limit exceeded:\n{} seconds since last call, but need {} seconds",
+                                elapsed_seconds,
+                                self.rate_limit_seconds))
+                }
+            },
+        }
+    }
+
+    pub fn called_now(&self) -> Self {
+        Api {
+            request: self.request.clone(),
+            response: self.response.clone(),
+            rate_limit_seconds: self.rate_limit_seconds,
+            last_api_call: Some(SystemTime::now()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -38,7 +71,7 @@ impl AppState {
         }
     }
 
-    // panics if Mutex lock fails
+    /// panics if Mutex lock fails
     fn api(&mut self, name: String, api: Api) {
         self.apis.lock().unwrap().insert(name, api);
     }
@@ -66,27 +99,50 @@ async fn index_apis(data: web::Data<AppState>) -> impl Responder {
             .collect::<Result<Map<String, Value>, String>>()
     });
     let pretty_json = serde_json::to_string_pretty(&json_body.unwrap()).unwrap();
-    // HttpResponse::Ok().json(json_body)
     HttpResponse::Ok().body(pretty_json)
 }
 
 #[get("/apis/{api_id}")]
-async fn get_api(path: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
+async fn get_api(path: web::Path<String>, data: web::Data<AppState>, query: web::Json<Value>) -> impl Responder {
     let path_str: String = path.into_inner();
     match data.apis.lock().map_err(|e| format!("{}", e)) {
-        Ok(apis) => {
-            let json_response = (*apis).get(&path_str)
-                .ok_or_else(|| format!("API not found: {:?}", path_str));
-            HttpResponse::Ok().json(json_response)
+        Ok(mut apis) => {
+            println!("DEBUG:\npath:\n{}\napis:\n{:?}\nquery\n{}", path_str, apis, query);
+            let json_response = apis.clone().get(&path_str)
+                .ok_or_else(|| format!("API not found: {:?}", path_str))
+                .and_then(|api| api.check_rate_limit().map(|_| api))
+                .and_then(|api| {
+                    if api.request == query.clone() {
+                        let new_api = api.called_now();
+                        apis.insert(path_str, new_api);
+                        Ok(api.response.clone())
+                    } else {
+                        Err(format!("unexpected request JSON, expected:\n{}", api.request))
+                    }
+                });
+            match json_response {
+                Ok(response) => {
+                    println!("response: {}", response);
+                    HttpResponse::Ok().json(response)
+                },
+                Err(ref e) => {
+                    println!("error: {}", e);
+                    HttpResponse::BadRequest().json((e.clone(), json_response, query))
+                },
+            }
         },
         Err(e) =>
             HttpResponse::NotFound().body(format!("GET /apis/{} failed:\n{}", path_str, e)),
     }
 }
 
-// #[post("/apis/{api_id}")]
-// async fn echo(req_body: String) -> impl Responder {
-//     HttpResponse::Ok().body(req_body)
+#[post("/apis/{api_id}")]
+async fn post_api(_path: web::Path<String>, _data: web::Data<AppState>, request: web::Json<Api>) -> impl Responder {
+    HttpResponse::Ok().json(request.into_inner())
+}
+
+// async fn post_api(path: ) -> impl Responder {
+    // HttpResponse::Ok().body(req_body)
 // }
 
 #[actix_web::main]
@@ -101,7 +157,7 @@ async fn main() -> std::io::Result<()> {
     let mut app_state = AppState::new();
     app_state.api("got_null".to_string(), Api {
         request: Value::Null,
-        response: Value::String("Got null?".to_string()),
+        response: Value::String("Got null!".to_string()),
         rate_limit_seconds: 1,
         last_api_call: None,
     });
@@ -119,7 +175,7 @@ async fn main() -> std::io::Result<()> {
             .service(index)
             .service(index_apis)
             .service(get_api)
-            // .route("/hey", web::get().to(manual_hello))
+            .service(post_api)
     })
     .bind((server_root, server_port))?
     .run()
