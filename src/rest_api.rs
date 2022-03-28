@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 /// GET REST Api, located at 'apis/{name}'
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct Api {
+pub struct Api {
     /// Constant required request JSON
     request: Value,
     /// Constant response JSON
@@ -20,6 +20,15 @@ struct Api {
 }
 
 impl Api {
+    pub fn new(request: Value, response: Value, rate_limit_seconds: u64) -> Self {
+        Api {
+            request: request,
+            response: response,
+            rate_limit_seconds: rate_limit_seconds,
+            last_api_call: None,
+        }
+    }
+
     /// Fail if rate_limit_seconds > elapsed_seconds since last called_now
     pub fn check_rate_limit(&self) -> Result<(), String> {
         match self.last_api_call {

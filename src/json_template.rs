@@ -21,11 +21,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use tokio_stream::{self as stream, StreamExt};
-// use futures::executor::block_on;
-// use futures::executor::ThreadPool;
-// use futures::executor::LocalPool;
-
-// use std::io;
 //// END query
 
 
@@ -131,6 +126,19 @@ pub struct TValueRunError {
 }
 
 impl TValue {
+    pub fn from_json(json: Value) -> Self {
+        match json {
+            Value::Null => Self::Null,
+            Value::Bool(x) => Self::Bool(x),
+            Value::Number(x) => Self::Number(x),
+            Value::String(x) => Self::String(x),
+            Value::Array(x) => Self::Array(x.into_iter().map(|x| TValue::from_json(x)).collect()),
+            Value::Object(x) => Self::Object(TMap {
+                map: x.into_iter().map(|(x, y)| (x, TValue::from_json(y))).collect()
+            }),
+        }
+    }
+
     pub fn to_json(&self) -> Result<Value, TValueError> {
         serde_json::to_value(self)
             .map_err(|e| TValueError::SerdeJsonError(Arc::new(e)))
@@ -167,11 +175,19 @@ pub enum TValueError {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Template {
+    // TODO: use impl instead of pub
     pub variables: Map<String, Value>,
     pub template: TValue,
 }
 
 impl Template {
+    pub fn from_json(json: Value) -> Self {
+        Template {
+            variables: Map::new(),
+            template: TValue::from_json(json),
+        }
+    }
+
     pub fn run(self) -> Result<Value, TValueRunError> {
         self.template.run(self.variables)
     }
@@ -189,6 +205,7 @@ impl Template {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QueryType {
     Get,
+    Put,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -252,69 +269,74 @@ impl From<serde_json::Error> for QueryError {
     }
 }
 
-// display query
-// rate limit
-// debug caching
-// cache per "api host"
-//
-// get variables from cli
-// output specialized type
-// calculate full type
-//
-// next:
-// - stack var labels
-// - execution traces (call graphs)
-// - error type/handling
-// - TEST
-
 impl Query {
-    pub async fn get_cached(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
+    pub fn to_json(&self) -> Result<Value, QueryError> {
+        Ok(serde_json::to_value(self)?)
+    }
+
+    pub async fn get_cached(&self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
         if self.cached {
+            println!("Checking cache: {:?}", cache_location.clone());
             let cache_str = fs::read_to_string(cache_location)?;
             let cache: Map<String, Value> = serde_json::from_str(&cache_str)?;
             let cache_index = format!("{:?}:{:?}", self.name, variables);
             cache.get(&cache_index).ok_or_else(|| {
                 QueryError::NotCached {
-                    name: self.name,
-                    url: self.url,
+                    name: self.name.clone(),
+                    url: self.url.clone(),
             }}).map(|x| x.clone())
         } else {
             Err(QueryError::NotCached {
-                name: self.name,
-                url: self.url,
+                name: self.name.clone(),
+                url: self.url.clone(),
             })
         }
     }
 
-    pub async fn run(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
+    pub async fn put_cached(&self, result: Value, variables: Map<String, Value>, cache_location: PathBuf) -> Result<(), QueryError> {
+        if self.cached {
+            // TODO: don't re-add to cache if fetched from get_cached
+            println!("Adding to cache: {:?}", cache_location.clone());
+            let mut cache: Map<String, Value> = if cache_location.as_path().exists() {
+                let cache_str = fs::read_to_string(cache_location.clone())?;
+                serde_json::from_str(&cache_str)?
+            } else {
+                Map::new()
+            };
+            let cache_index = format!("{:?}:{:?}", self.name, variables);
+            cache.insert(cache_index, result);
+            let cache_json = serde_json::to_string_pretty(&serde_json::to_value(cache).unwrap()).unwrap();
+            fs::write(cache_location, cache_json)?;
+            Ok(())
+        } else {
+            println!("Not cached");
+            Ok(())
+        }
+    }
+
+    pub async fn run(&self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
         println!("Running Query \"{}\" at \"{}\"", self.name, self.url);
-
-        // println!("{}", 
-        // let pool = ThreadPool::new().unwrap();
-        // let mut pool = LocalPool::new();
-        // let mut rt = tokio::runtime::Runtime::new().unwrap();
-        // let future = async { /* ... */ };
-
         let ran_template = self.clone().template.run(variables.clone())?;
         match serde_json::to_value(ran_template.clone()).and_then(|x| serde_json::to_string_pretty(&x)) {
             Ok(json) => println!("{}\n", json),
             Err(e) => println!("Printing query template failed: {}", e),
         }
 
-        // let result_block = async {
         let result_block = {
-            match self.clone().get_cached(variables, cache_location).await {
-                Ok(result) => Ok(result),
+            match self.clone().get_cached(variables.clone(), cache_location.clone()).await {
+                Ok(result) => {
+                    println!("Got cached result..");
+                    Ok(result)
+                },
                 Err(_e) => {
                     match self.query_type {
                         QueryType::Get => {
                             let client = Client::new();
-                            let response = client.get(self.url)
+                            let response = client.get(self.url.clone())
                                 .json(&ran_template)
                                 .send()
                                 .await
                                 .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
-
                             if response.status().is_success() {
                                 Ok(response.json().await.map_err(|e| QueryError::ReqwestError(Arc::new(e)))?)
                             } else {
@@ -325,24 +347,42 @@ impl Query {
                                 Err(QueryError::RequestFailed {
                                     response: response_text,
                                 })
-
                             }
                         },
+
+                        QueryType::Put => {
+                            let client = Client::new();
+                            let response = client.put(self.url.clone())
+                                .json(&ran_template)
+                                .send()
+                                .await
+                                .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
+                            if response.status().is_success() {
+                                Ok(response.json().await.map_err(|e| QueryError::ReqwestError(Arc::new(e)))?)
+                            } else {
+                                let response_text = match response.text().await {
+                                    Ok(text) => text,
+                                    Err(e) => format!("error: \n{}", e),
+                                };
+                                Err(QueryError::RequestFailed {
+                                    response: response_text,
+                                })
+                            }
+                        },
+
                     }
                 },
             }
         };
 
-        result_block
-            // .map_err(|e| QueryError::ReqwestError(Arc::new(e)))
-
-        // Ok(result_block)
-
-        // Ok(result_block.wait()?)
-
-        // // pool.spawn_ok(result_block);
-        // // pool.run_until(result_block).map_err(|e| QueryError::ReqwestError(Arc::new(e)))
-        // rt.block_on(result_block).map_err(|e| QueryError::ReqwestError(Arc::new(e)))
+        // result_block.
+        match result_block {
+            Ok(result) => {
+                self.put_cached(result.clone(), variables, cache_location).await?;
+                Ok(result)
+            },
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -353,12 +393,16 @@ pub struct Queries {
 }
 
 impl Queries {
-    pub async fn run(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Vec<Value>, QueryError> {
+    pub async fn run(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Vec<Map<String, Value>>, QueryError> {
         let mut result = Vec::with_capacity(self.queries.len());
         let mut stream = stream::iter(self.queries);
 
         while let Some(query) = stream.next().await {
-            result.push(query.run(variables.clone(), cache_location.clone()).await?)
+            let query_result = query.run(variables.clone(), cache_location.clone()).await?;
+            let mut query_result_json = Map::new();
+            query_result_json.insert("query".to_string(), query.to_json()?);
+            query_result_json.insert("result".to_string(), query_result);
+            result.push(query_result_json)
         }
         Ok(result)
     }

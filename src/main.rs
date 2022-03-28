@@ -5,6 +5,8 @@ use cryptoscript::{Cli};
 use cryptoscript::{TMap, TValue, Template};
 use cryptoscript::{Query, QueryType};
 
+use cryptoscript::{Api};
+
 use std::marker::PhantomData;
 
 // use indexmap::IndexMap;
@@ -338,6 +340,38 @@ async fn main() {
     //    &tag=latest
     //    &apikey=YourApiKeyToken
 
+    let erc20_request_json = r#"
+        {
+          "module": "account",
+          "action": "tokenbalance",
+          "contractaddress": "0x57d90b64a1a57749b0f932f1a3395792e12e7055",
+          "address": "0xe04f27eb70e025b78871a2ad7eabe85e61212761",
+          "tag": "latest",
+          "apikey": "4JGE3TQ3ZAGAM7IK86M24DY2H4EH1AIAZ"
+        }
+        "#;
+    let erc20_response_json = r#"
+        {
+           "status":"1",
+           "message":"OK",
+           "result":"135499"
+        }
+        "#;
+    let erc20_request = serde_json::from_str(erc20_request_json).unwrap();
+    let erc20_response = serde_json::from_str(erc20_response_json).unwrap();
+
+    let erc20_rate_limit_seconds = 1;
+    let erc20_api: Api = Api::new(erc20_request, erc20_response, erc20_rate_limit_seconds);
+    let erc20_api_json: serde_json::Value = serde_json::to_value(erc20_api).unwrap();
+    let erc20_api_template = Template::from_json(erc20_api_json);
+    let erc20_api_template_json = serde_json::to_string_pretty(&serde_json::to_value(erc20_api_template.clone()).unwrap()).unwrap();
+    println!("ERC-20:");
+    println!("{}", erc20_api_template_json);
+    println!("");
+    println!("");
+
+
+
     let mut variables = Map::new();
     variables.insert("contractaddress".to_string(), Value::String("0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string()));
     variables.insert("address".to_string(), Value::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string()));
@@ -356,13 +390,13 @@ async fn main() {
     query_parameters.insert("apikey".to_string(), TValue::Var("apikey".to_string()));
     template.insert("parameters".to_string(), TValue::Object(query_parameters.clone()));
 
-    let _full_template = Template {
+    let full_template = Template {
         variables: variables,
         template: TValue::Object(template),
     };
 
-    // let json_template = serde_json::to_string_pretty(&serde_json::to_value(full_template.clone()).unwrap()).unwrap();
-    // println!("{}", json_template);
+    let json_template = serde_json::to_string_pretty(&serde_json::to_value(full_template.clone()).unwrap()).unwrap();
+    println!("{}", json_template);
 
     // {
     //   "variables": {
@@ -413,6 +447,8 @@ async fn main() {
     // };
     // let json_query = serde_json::to_string_pretty(&serde_json::to_value(query.clone()).unwrap()).unwrap();
     // println!("{}", json_query);
+
+
 
     let cli = Cli::parse();
     cli.run().await;

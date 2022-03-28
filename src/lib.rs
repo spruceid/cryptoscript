@@ -19,6 +19,9 @@ mod parse;
 pub use parse::{parse, parse_json};
 mod executor;
 pub use executor::Executor;
+
+mod rest_api;
+pub use rest_api::Api;
 mod cli;
 pub use cli::Cli;
 

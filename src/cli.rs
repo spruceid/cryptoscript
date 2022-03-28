@@ -149,7 +149,8 @@ impl Cli {
         stack.push_elem(input_json_value);
 
         let variables = serde_json::from_str(&self.variables)?;
-        let queries_result = self.parse_queries()?.run(variables, self.cache_location.clone()).await?;
+        let mut queries_result = self.parse_queries()?.run(variables, self.cache_location.clone()).await?;
+        queries_result.reverse();
         for query_result in queries_result {
             stack.push_elem(query_result)
         }
