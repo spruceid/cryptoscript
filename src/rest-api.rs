@@ -6,27 +6,21 @@ use indexmap::IndexMap;
 use serde_json::{Map, Value};
 use serde::{Deserialize, Serialize};
 
-// TODO:
-// - put a new api w/
-//  + request json
-//  + response json
-//  + rate limit
-// - get an api:
-//  + require put request json
-//  + return put response json
-//  + enforce rate limit
-// - get all apis as list
-// - top level: link to /apis and provide example
-
+/// GET REST Api, located at 'apis/{name}'
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Api {
+    /// Constant required request JSON
     request: Value,
+    /// Constant response JSON
     response: Value,
+    /// Number of seconds required between queries
     rate_limit_seconds: u64,
+    /// Time of last API call
     last_api_call: Option<SystemTime>,
 }
 
 impl Api {
+    /// Fail if rate_limit_seconds > elapsed_seconds since last called_now
     pub fn check_rate_limit(&self) -> Result<(), String> {
         match self.last_api_call {
             None => Ok(()),
@@ -46,6 +40,7 @@ impl Api {
         }
     }
 
+    /// Update last_api_call
     pub fn called_now(&self) -> Self {
         Api {
             request: self.request.clone(),
@@ -56,6 +51,7 @@ impl Api {
     }
 }
 
+/// All of the supported API's
 #[derive(Clone, Debug)]
 struct AppState {
     apis: Arc<Mutex<IndexMap<String, Api>>>,
@@ -68,6 +64,7 @@ impl AppState {
         }
     }
 
+    /// Add an API. Its path will be '/apis/name'
     fn api(&self, name: String, api: Api) -> Result<(), String> {
         println!("Adding API \"{}\":", name);
         match serde_json::to_value(api.clone()).and_then(|x| serde_json::to_string_pretty(&x)) {
@@ -185,4 +182,3 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-

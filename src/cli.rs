@@ -5,7 +5,7 @@ use crate::stack::{Stack};
 use crate::types_scratch::{Instrs, StackInstructionError};
 use crate::instruction::{InstructionError};
 use crate::parse::{parse_json, ParseError};
-use crate::json_template::{Query, QueryError};
+use crate::json_template::{Query, QueryError, Queries};
 
 // use cryptoscript::{parse_json, Elem, ElemSymbol, Executor, Instruction, Instructions, Restack};
 // use cryptoscript::{Stack, Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq, StringEq};
@@ -23,9 +23,9 @@ use thiserror::Error;
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 pub struct Cli {
-    /// Query to run
+    /// Queries to run
     #[clap(short, long, parse(from_os_str), value_name = "FILE")]
-    query: PathBuf,
+    queries: PathBuf,
 
     /// Query cache json file
     #[clap(long, parse(from_os_str), value_name = "FILE")]
@@ -119,10 +119,10 @@ impl From<serde_json::Error> for CliError {
 }
 
 impl Cli {
-    pub fn parse_query(&self) -> Result<Query, CliError> {
-        let query_str = fs::read_to_string(self.query.clone())?;
-        let query: Query = serde_json::from_str(&query_str)?;
-        Ok(query)
+    pub fn parse_queries(&self) -> Result<Queries, CliError> {
+        let queries_str = fs::read_to_string(self.queries.clone())?;
+        let queries: Queries = serde_json::from_str(&queries_str)?;
+        Ok(queries)
     }
 
     pub fn parse_code(&self) -> Result<Instrs, CliError> {
@@ -149,8 +149,13 @@ impl Cli {
         stack.push_elem(input_json_value);
 
         let variables = serde_json::from_str(&self.variables)?;
-        let query_result = self.parse_query()?.run(variables, self.cache_location.clone()).await?;
-        stack.push_elem(query_result);
+        let queries_result = self.parse_queries()?.run(variables, self.cache_location.clone()).await?;
+        for query_result in queries_result {
+            stack.push_elem(query_result)
+        }
+
+        println!("stack initialized:");
+        stack.debug()?;
 
         println!("instructions:");
         for instruction in &instructions.instrs {

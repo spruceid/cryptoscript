@@ -326,10 +326,9 @@ async fn main() {
 
     println!("");
     println!("");
-    println!("Template test:");
+    // println!("Template test:");
 
     // ERC-20 token balance (currently)
-
     // GET
     // https://api.etherscan.io/api
     //    ?module=account

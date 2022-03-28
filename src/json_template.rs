@@ -16,10 +16,11 @@ use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
 //// BEGIN query
-use reqwest::Client;
+use reqwest::{Client, Response};
 use std::fs;
 use std::path::PathBuf;
 
+use tokio_stream::{self as stream, StreamExt};
 // use futures::executor::block_on;
 // use futures::executor::ThreadPool;
 // use futures::executor::LocalPool;
@@ -207,6 +208,13 @@ pub enum QueryError {
         url: String,
     },
 
+    #[error("Query::run: request failed:\nresponse:\n{response}")]
+    RequestFailed {
+        response: String,
+        // response: Arc<reqwest::Response>,
+        // body: String,
+    },
+
     #[error("TValueRunError:\n{0:?}")]
     TValueRunError(TValueRunError),
 
@@ -279,12 +287,20 @@ impl Query {
     }
 
     pub async fn run(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Value, QueryError> {
+        println!("Running Query \"{}\" at \"{}\"", self.name, self.url);
+
+        // println!("{}", 
         // let pool = ThreadPool::new().unwrap();
         // let mut pool = LocalPool::new();
         // let mut rt = tokio::runtime::Runtime::new().unwrap();
         // let future = async { /* ... */ };
 
         let ran_template = self.clone().template.run(variables.clone())?;
+        match serde_json::to_value(ran_template.clone()).and_then(|x| serde_json::to_string_pretty(&x)) {
+            Ok(json) => println!("{}\n", json),
+            Err(e) => println!("Printing query template failed: {}", e),
+        }
+
         // let result_block = async {
         let result_block = {
             match self.clone().get_cached(variables, cache_location).await {
@@ -293,19 +309,33 @@ impl Query {
                     match self.query_type {
                         QueryType::Get => {
                             let client = Client::new();
-                            let result = client.get(self.url)
+                            let response = client.get(self.url)
                                 .json(&ran_template)
                                 .send()
                                 .await
                                 .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
-                            Ok(result.json().await.map_err(|e| QueryError::ReqwestError(Arc::new(e)))?)
+
+                            if response.status().is_success() {
+                                Ok(response.json().await.map_err(|e| QueryError::ReqwestError(Arc::new(e)))?)
+                            } else {
+                                let response_text = match response.text().await {
+                                    Ok(text) => text,
+                                    Err(e) => format!("error: \n{}", e),
+                                };
+                                Err(QueryError::RequestFailed {
+                                    response: response_text,
+                                })
+
+                            }
                         },
                     }
                 },
             }
         };
 
-        result_block.map_err(|e| QueryError::ReqwestError(Arc::new(e)))
+        result_block
+            // .map_err(|e| QueryError::ReqwestError(Arc::new(e)))
+
         // Ok(result_block)
 
         // Ok(result_block.wait()?)
@@ -313,6 +343,24 @@ impl Query {
         // // pool.spawn_ok(result_block);
         // // pool.run_until(result_block).map_err(|e| QueryError::ReqwestError(Arc::new(e)))
         // rt.block_on(result_block).map_err(|e| QueryError::ReqwestError(Arc::new(e)))
+    }
+}
+
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Queries {
+    queries: Vec<Query>,
+}
+
+impl Queries {
+    pub async fn run(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Vec<Value>, QueryError> {
+        let mut result = Vec::with_capacity(self.queries.len());
+        let mut stream = stream::iter(self.queries);
+
+        while let Some(query) = stream.next().await {
+            result.push(query.run(variables.clone(), cache_location.clone()).await?)
+        }
+        Ok(result)
     }
 }
 //// END query
