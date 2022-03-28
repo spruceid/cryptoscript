@@ -501,10 +501,10 @@ impl Type {
         })
     }
 
-
-    pub fn specialize_to_input_stack(&mut self, stack_type: StackType) -> Result<(), TypeError> {
+    /// Returns output stack
+    pub fn specialize_to_input_stack(&mut self, stack_type: StackType) -> Result<StackType, TypeError> {
         if self.i_type.len() <= stack_type.len() {
-            let mut stack_type_iter = stack_type.into_iter();
+            let mut stack_type_iter = stack_type.clone().into_iter();
             for (type_id, elem_type) in self.i_type.clone().into_iter().zip(&mut stack_type_iter) {
                 // TODO: elimate copy?
                 let elem_type_copy = elem_type.clone();
@@ -519,11 +519,22 @@ impl Type {
                 let type_id = self.context.push(elem_type);
                 self.i_type.push(type_id);
             }
-            Ok(())
+            // Ok(())
+
+            Ok(StackType {
+                types: self.o_type.clone().into_iter().map(|type_id| {
+                    self.context.clone().get(&type_id, &|| ContextError::SpecializeToInputStack {
+                        type_of: self.clone(),
+                        stack_type: stack_type.clone(),
+                    })
+                }).collect::<Result<Vec<ElemType>, ContextError>>()
+                       .map_err(|e| TypeError::SpecializeToInputStackContextError(e))?,
+            })
+
         } else {
             Err(TypeError::SpecializeToInputStack {
                 type_of: self.clone(),
-                stack_type: stack_type,
+                stack_type: stack_type.clone(),
             })
         }
     }
@@ -757,18 +768,24 @@ pub enum ContextError {
 
     #[error("Context::unify failed:\n xs: \n{xs:?}\n xi: \n{xi:?}\n yi: \n{yi:?}\n is_lhs: \n{is_lhs:?}\n")]
     Unify {
-            xs: Context,
-            xi: TypeId,
-            yi: TypeId,
-            is_lhs: bool,
+        xs: Context,
+        xi: TypeId,
+        yi: TypeId,
+        is_lhs: bool,
     },
 
     #[error("Context::unify failed to unify ElemType's:\n\nxs:\n{xs}\n\nxi:\n{xi}\n\nyi:\n{yi}\n\nelem_error:\n{error}\n")]
     UnifyElemType {
-            xs: Context,
-            xi: TypeId,
-            yi: TypeId,
-            error: ElemTypeError,
+        xs: Context,
+        xi: TypeId,
+        yi: TypeId,
+        error: ElemTypeError,
+    },
+
+    #[error("Type::specialize_to_input_stack failed to resolve ElemType's:\ntype_of:\n{type_of}\n\nstack_type:\n{stack_type}")]
+    SpecializeToInputStack {
+        type_of: Type,
+        stack_type: StackType,
     },
 
     #[error("Context::normalize_on building TypeIdMap failed: \n{0:?}\n")]
@@ -785,7 +802,7 @@ impl From<TypeIdMapError> for ContextError {
 }
 
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Clone, Debug, PartialEq, Error)]
 pub enum TypeError {
     #[error("Specialization error:\ntype_id:\n{type_id}\n\nelem_type:\n{elem_type}\n\ncontext:\n{context}\n\nerror:\n{error}")]
     Specialization {
@@ -795,20 +812,23 @@ pub enum TypeError {
         error: ContextError,
     },
 
-    #[error("NormalizeContextError {0}")]
+    #[error("NormalizeContextError\n{0}")]
     NormalizeContextError(ContextError),
 
-    #[error("ComposeContextError {0}")]
+    #[error("ComposeContextError\n{0}")]
     ComposeContextError(ContextError),
 
-    #[error("TypeError::update_type_id failed when updating the Context: {0}")]
+    #[error("TypeError::update_type_id failed when updating the Context:\n{0}")]
     UpdateTypeId(ContextError),
 
-    #[error("TypeError::compose disjoint_union {0}")]
+    #[error("TypeError::compose disjoint_union\n{0}")]
     ComposeDisjointUnion(ContextError),
 
-    #[error("Type::normalize applying TypeIdMap failed: {0:?}")]
+    #[error("Type::normalize applying TypeIdMap failed:\n{0}")]
     TypeIdMapError(TypeIdMapError),
+
+    #[error("Type::specialize_to_input_stack ContextError:\n{0}")]
+    SpecializeToInputStackContextError(ContextError),
 
     // TODO: use StackType and Display instead of Vec
     #[error("Type::specialize_to_input_stack: stack_type shorter than expected:\n{type_of}\n{stack_type}")]

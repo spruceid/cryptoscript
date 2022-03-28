@@ -330,8 +330,8 @@ impl Elem {
 }
 
 impl ElemType {
-    fn from_locations(type_set: EnumSet<ElemSymbol>,
-                      locations: Vec<Location>) -> Self {
+    pub fn from_locations(type_set: EnumSet<ElemSymbol>,
+                          locations: Vec<Location>) -> Self {
         ElemType {
             type_set: type_set,
             info: locations.iter()

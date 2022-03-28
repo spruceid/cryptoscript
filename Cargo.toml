@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "rest-api"
-path = "src/rest-api.rs"
+path = "src/rest_api.rs"
 
 [dependencies]
 actix-web = { version = "4.0.1", default-features = false, features = ["macros"] }

@@ -1,14 +1,11 @@
-// use crate::elem::{StackType};
+use crate::elem::{StackType};
 use crate::stack::{Stack};
 // use crate::restack::{Restack, RestackError};
 // use crate::types::{Context, ContextError, Type, Empty, AnError, Nil};
 use crate::types_scratch::{Instrs, StackInstructionError};
 use crate::instruction::{InstructionError};
 use crate::parse::{parse_json, ParseError};
-use crate::json_template::{Query, QueryError, Queries};
-
-// use cryptoscript::{parse_json, Elem, ElemSymbol, Executor, Instruction, Instructions, Restack};
-// use cryptoscript::{Stack, Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq, StringEq};
+use crate::query::{QueryError, Queries};
 
 use std::fs;
 use std::io;
@@ -52,8 +49,11 @@ enum Commands {
     /// Parse only
     Parse,
 
-    // TODO: implement
-    // /// Type check only
+    /// Type check only (monomorphic)
+    TypeMono,
+
+    // // TODO: implement
+    // /// Type check only (polymorphic)
     // Type,
 }
 
@@ -141,6 +141,19 @@ impl Cli {
         }
     }
 
+    pub fn type_of_mono(&self) -> Result<StackType, CliError> {
+        let instructions = self.parse_code()?;
+        let num_queries = self.parse_queries()?.len();
+
+        println!("instructions:");
+        for instruction in &instructions.instrs {
+            println!("{:?}", instruction);
+        }
+
+        println!("");
+        Ok(instructions.type_of_mono(num_queries)?)
+    }
+
     pub async fn parse_and_run_result(&self) -> Result<(), CliError> {
         let instructions = self.parse_code()?;
         let mut stack = Stack::new();
@@ -155,8 +168,8 @@ impl Cli {
             stack.push_elem(query_result)
         }
 
-        println!("stack initialized:");
-        stack.debug()?;
+        // println!("stack initialized:");
+        // stack.debug()?;
 
         println!("instructions:");
         for instruction in &instructions.instrs {
@@ -179,6 +192,12 @@ impl Cli {
             Some(Commands::Parse) => {
                 match self.parse_code() {
                     Ok(parsed) => println!("parsed:\n{:?}", parsed),
+                    Err(e) => println!("parsing failed:\n{}", e),
+                }
+            },
+            Some(Commands::TypeMono) => {
+                match self.type_of_mono() {
+                    Ok(type_of) => println!("type:\n{}", type_of),
                     Err(e) => println!("parsing failed:\n{}", e),
                 }
             },

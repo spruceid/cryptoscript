@@ -1,9 +1,9 @@
 use cryptoscript::{parse_json, Elem, ElemSymbol, Instruction, Instructions};
-use cryptoscript::{Restack, Stack, Instrs};
-use cryptoscript::{AssertTrue, Push, Lookup, UnpackJson, Index, StringEq, CheckEq};
+use cryptoscript::{Restack, Instrs};
+use cryptoscript::{AssertTrue, Push, Lookup, UnpackJson, Index, StringEq};
 use cryptoscript::{Cli};
 use cryptoscript::{TMap, TValue, Template};
-use cryptoscript::{Query, QueryType};
+// use cryptoscript::{Query, QueryType};
 
 use cryptoscript::{Api};
 
@@ -364,12 +364,12 @@ async fn main() {
     let erc20_api: Api = Api::new(erc20_request, erc20_response, erc20_rate_limit_seconds);
     let erc20_api_json: serde_json::Value = serde_json::to_value(erc20_api).unwrap();
     let erc20_api_template = Template::from_json(erc20_api_json);
-    let erc20_api_template_json = serde_json::to_string_pretty(&serde_json::to_value(erc20_api_template.clone()).unwrap()).unwrap();
-    println!("ERC-20:");
-    println!("{}", erc20_api_template_json);
-    println!("");
-    println!("");
+    let _erc20_api_template_json = serde_json::to_string_pretty(&serde_json::to_value(erc20_api_template.clone()).unwrap()).unwrap();
 
+    // println!("ERC-20:");
+    // println!("{}", erc20_api_template_json);
+    // println!("");
+    // println!("");
 
 
     let mut variables = Map::new();
@@ -390,53 +390,13 @@ async fn main() {
     query_parameters.insert("apikey".to_string(), TValue::Var("apikey".to_string()));
     template.insert("parameters".to_string(), TValue::Object(query_parameters.clone()));
 
-    let full_template = Template {
+    let _full_template = Template {
         variables: variables,
         template: TValue::Object(template),
     };
 
-    let json_template = serde_json::to_string_pretty(&serde_json::to_value(full_template.clone()).unwrap()).unwrap();
-    println!("{}", json_template);
-
-    // {
-    //   "variables": {
-    //     "contractaddress": "0x57d90b64a1a57749b0f932f1a3395792e12e7055",
-    //     "address": "0xe04f27eb70e025b78871a2ad7eabe85e61212761",
-    //     "apikey": "YourApiKeyToken"
-    //   },
-    //   "template": {
-    //     "Object": {
-    //       "type": {
-    //         "String": "GET"
-    //       },
-    //       "URL": {
-    //         "String": "https://api.etherscan.io/api"
-    //       },
-    //       "parameters": {
-    //         "Object": {
-    //           "module": {
-    //             "String": "account"
-    //           },
-    //           "action": {
-    //             "String": "tokenbalance"
-    //           },
-    //           "contractaddress": {
-    //             "Var": "contractaddress"
-    //           },
-    //           "address": {
-    //             "Var": "address"
-    //           },
-    //           "tag": {
-    //             "String": "latest"
-    //           },
-    //           "apikey": {
-    //             "Var": "apikey"
-    //           }
-    //         }
-    //       }
-    //     }
-    //   }
-    // }
+    // let json_template = serde_json::to_string_pretty(&serde_json::to_value(full_template.clone()).unwrap()).unwrap();
+    // println!("{}", json_template);
 
     // let query = Query {
     //     name: "erc20".to_string(),
@@ -447,8 +407,6 @@ async fn main() {
     // };
     // let json_query = serde_json::to_string_pretty(&serde_json::to_value(query.clone()).unwrap()).unwrap();
     // println!("{}", json_query);
-
-
 
     let cli = Cli::parse();
     cli.run().await;

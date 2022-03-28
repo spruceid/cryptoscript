@@ -1,7 +1,7 @@
 use crate::elem::{Elem, ElemType, ElemTypeError, ElemSymbol, StackType, AnElem};
 use crate::stack::{Stack, StackError};
 use crate::restack::{Restack, RestackError};
-use crate::types::{Context, ContextError, Type, Empty, AnError, Nil};
+use crate::types::{Context, ContextError, Type, TypeError, Empty, AnError, Nil};
 
 use std::cmp;
 use std::convert::TryFrom;
@@ -95,13 +95,13 @@ pub enum ElemsPopError {
         error: Arc<Self>,
     },
 
-    #[error("Elems::elem_type (Or): Set includes repeated type: {0:?}")]
+    #[error("Elems::elem_type (Or): Set includes repeated type:\n{0}")]
     ElemTypeError(ElemTypeError),
 
     #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding Tl type: {0:?}")]
     ReturnOrTl(Arc<ElemsPopError>),
 
-    #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding type: {0:?}")]
+    #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding type:\n{0}")]
     ReturnOrContextError(ContextError),
 }
 
@@ -930,6 +930,9 @@ pub enum StackInstructionError {
         stack_input: String,
     },
 
+    #[error("Instrs::type_of_mono type error:\n{0}")]
+    TypeError(TypeError),
+
     #[error("StackInstructionError::RestackError:\n{0}")]
     RestackError(RestackError),
 
@@ -1003,36 +1006,42 @@ impl Instr {
 
 #[derive(Clone, Debug)]
 pub struct Instrs {
-    // TODO: replace Result with Either?
     pub instrs: Vec<Instr>,
 }
-
-// fn example_instrs() -> Instrs {
-//     Instrs {
-//         instrs: vec![
-//             Arc::new(Concat {}),
-//             Arc::new(AssertTrue {}),
-//             Arc::new(Push { push: () }),
-//             Arc::new(HashSha256 {}),
-//             Arc::new(Slice {}),
-//             Arc::new(Index {}),
-//             Arc::new(ToJson {}),
-//             Arc::new(Lookup {}),
-//             Arc::new(UnpackJson { t: PhantomData::<()> }),
-//             Arc::new(StringToBytes {}),
-//             Arc::new(CheckLe {}),
-//             Arc::new(CheckLt {}),
-//             Arc::new(CheckEq {})
-//         ],
-//     }
-// }
-
 
 impl Instrs {
     pub fn new() -> Self {
         Instrs {
             instrs: vec![],
         }
+    }
+
+    /// Assuming an input stack of [Json, Json, ..] (num_input_json count),
+    /// what's the monomorphic type of Self?
+    pub fn type_of_mono(&self, num_input_json: usize) -> Result<StackType, StackInstructionError> {
+        let mut stack_type = (0..num_input_json).map(|_| ElemType::from_locations(EnumSet::only(ElemSymbol::Json), vec![])).collect();
+        for (line_no, instr_or_restack) in (&self.instrs).into_iter().enumerate() {
+            println!("------------------------------------------------------------------------------------------");
+            println!("line_no: {}", line_no);
+            println!("{:?}\n", instr_or_restack);
+            match instr_or_restack {
+                Instr::Instr(instr) => {
+                    let mut instr_type = instr.type_of()
+                        .map_err(|e| StackInstructionError::ElemsPopError(e))?;
+                    println!("instr: {}\n", instr_type);
+                    stack_type = instr_type.specialize_to_input_stack(stack_type)
+                        .map_err(|e| StackInstructionError::TypeError(e))?;
+                },
+                Instr::Restack(restack) => {
+                    restack.run(&mut stack_type.types)
+                        .map_err(|e| StackInstructionError::RestackError(e))?
+                },
+            }
+        }
+        println!("------------------------------------------------------------------------------------------");
+        println!("Finished running successfully.\n");
+        println!("Final stack:");
+        Ok(stack_type)
     }
 
     pub fn run(&self, stack: &mut Stack) -> Result<(), StackInstructionError> {
@@ -1056,7 +1065,7 @@ impl Instrs {
                                                            // .into_iter()
                                                            // .map(|x| x.elem_type(vec![]))
                                                            // .collect()) {
-                                Ok(()) => println!("specialized: {}\n", mut_instr_type),
+                                Ok(_) => println!("specialized: {}\n", mut_instr_type),
                                 Err(e) => println!("specialization failed:\n{}\n", e),
                             }
                         },
@@ -1484,7 +1493,7 @@ pub struct UnpackJson<T: AnElem> {
 pub struct UnpackJsonError {}
 impl AnError for UnpackJsonError {}
 
-trait AJsonElem: AnElem {
+pub trait AJsonElem: AnElem {
     fn to_value(self) -> Value;
     fn from_value(t: PhantomData<Self>, x: Value) -> Option<Self> where Self: Sized;
 }

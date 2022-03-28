@@ -10,9 +10,9 @@ mod types;
 mod types_scratch;
 pub use types_scratch::{Instruction, Instrs, AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq, StringEq};
 mod json_template;
-pub use json_template::{TMap, TValue, Template, Query, QueryType, QueryError};
-// pub use types::{Instruction, Instructions};
-// , demo_triple, demo_triple_with_tl_handles_intermediate_types, HList
+pub use json_template::{TMap, TValue, TValueRunError, Template};
+mod query;
+pub use query::{Query, QueryType, QueryError};
 mod instruction;
 pub use instruction::{Instructions};
 mod parse;
