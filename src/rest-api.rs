@@ -1,25 +1,22 @@
 use std::time::SystemTime;
 use std::sync::{Arc, Mutex};
 
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, put, web, App, HttpResponse, HttpServer, Responder};
 use indexmap::IndexMap;
 use serde_json::{Map, Value};
 use serde::{Deserialize, Serialize};
 
 // TODO:
-// - post a new api w/
+// - put a new api w/
 //  + request json
 //  + response json
 //  + rate limit
 // - get an api:
-//  + require posted request json
-//  + return posted response json
+//  + require put request json
+//  + return put response json
 //  + enforce rate limit
 // - get all apis as list
 // - top level: link to /apis and provide example
-
-// TODO:
-// - implement post
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Api {
@@ -71,9 +68,16 @@ impl AppState {
         }
     }
 
-    /// panics if Mutex lock fails
-    fn api(&mut self, name: String, api: Api) {
-        self.apis.lock().unwrap().insert(name, api);
+    fn api(&self, name: String, api: Api) -> Result<(), String> {
+        println!("Adding API \"{}\":", name);
+        match serde_json::to_value(api.clone()).and_then(|x| serde_json::to_string_pretty(&x)) {
+            Ok(json) => println!("{}", json),
+            Err(e) => println!("Printing API failed: {}", e),
+        }
+        self.apis.lock()
+            .map_err(|e| format!("Acquiring lock failed:\n{}", e))?
+            .insert(name, api);
+        Ok(())
     }
 }
 
@@ -117,7 +121,7 @@ async fn get_api(path: web::Path<String>, data: web::Data<AppState>, query: web:
                         apis.insert(path_str, new_api);
                         Ok(api.response.clone())
                     } else {
-                        Err(format!("unexpected request JSON, expected:\n{}", api.request))
+                        Err(format!("unexpected request JSON, expected:\n \"{}\"", api.request))
                     }
                 });
             match json_response {
@@ -136,14 +140,14 @@ async fn get_api(path: web::Path<String>, data: web::Data<AppState>, query: web:
     }
 }
 
-#[post("/apis/{api_id}")]
-async fn post_api(_path: web::Path<String>, _data: web::Data<AppState>, request: web::Json<Api>) -> impl Responder {
-    HttpResponse::Ok().json(request.into_inner())
+#[put("/apis/{api_id}")]
+async fn put_api(path: web::Path<String>, data: web::Data<AppState>, request: web::Json<Api>) -> impl Responder {
+    match data.api(path.clone(), request.into_inner()) {
+        Ok(()) => HttpResponse::Ok()
+            .json(format!("API added: /apis/{}", path.clone())),
+        Err(e) => HttpResponse::InternalServerError().json(e),
+    }
 }
-
-// async fn post_api(path: ) -> impl Responder {
-    // HttpResponse::Ok().body(req_body)
-// }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -154,20 +158,20 @@ async fn main() -> std::io::Result<()> {
     println!("- {}      root", server_address);
     println!("- {}/apis API's root", server_address);
 
-    let mut app_state = AppState::new();
+    let app_state = AppState::new();
     app_state.api("got_null".to_string(), Api {
         request: Value::Null,
         response: Value::String("Got null!".to_string()),
         rate_limit_seconds: 1,
         last_api_call: None,
-    });
+    }).map_err(|e| std::io::Error::new(std::io::ErrorKind::WouldBlock, e))?;
 
     app_state.api("got_number".to_string(), Api {
         request: Value::Number(From::from(0u8)),
         response: Value::String("Got 0, as expected!".to_string()),
         rate_limit_seconds: 1,
         last_api_call: None,
-    });
+    }).map_err(|e| std::io::Error::new(std::io::ErrorKind::WouldBlock, e))?;
 
     HttpServer::new(move || {
         App::new()
@@ -175,7 +179,7 @@ async fn main() -> std::io::Result<()> {
             .service(index)
             .service(index_apis)
             .service(get_api)
-            .service(post_api)
+            .service(put_api)
     })
     .bind((server_root, server_port))?
     .run()
