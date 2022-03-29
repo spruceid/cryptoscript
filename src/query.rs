@@ -7,8 +7,8 @@ use std::sync::{Arc};
 use reqwest::{Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tokio_stream::{self as stream, StreamExt};
 use thiserror::Error;
+use tokio_stream::{self as stream, StreamExt};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QueryType {
@@ -101,7 +101,6 @@ impl Query {
 
     pub async fn put_cached(&self, result: Value, variables: Map<String, Value>, cache_location: PathBuf) -> Result<(), QueryError> {
         if self.cached {
-            // TODO: don't re-add to cache if fetched from get_cached
             println!("Adding to cache: {:?}", cache_location.clone());
             let mut cache: Map<String, Value> = if cache_location.as_path().exists() {
                 let cache_str = fs::read_to_string(cache_location.clone())?;
@@ -127,72 +126,46 @@ impl Query {
             Ok(json) => println!("{}\n", json),
             Err(e) => println!("Printing query template failed: {}", e),
         }
-
-        let result_block = {
-            match self.clone().get_cached(variables.clone(), cache_location.clone()).await {
-                Ok(result) => {
-                    println!("Got cached result..");
-                    Ok(result)
-                },
-                Err(_e) => {
-                    match self.query_type {
-                        QueryType::Get => {
-                            let client = Client::new();
-                            let response = client.get(self.url.clone())
-                                .json(&ran_template)
-                                .send()
-                                .await
-                                .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
-                            if response.status().is_success() {
-                                Ok(response.json().await.map_err(|e| QueryError::ReqwestError(Arc::new(e)))?)
-                            } else {
-                                let response_text = match response.text().await {
-                                    Ok(text) => text,
-                                    Err(e) => format!("error: \n{}", e),
-                                };
-                                Err(QueryError::RequestFailed {
-                                    response: response_text,
-                                })
-                            }
-                        },
-
-                        QueryType::Put => {
-                            let client = Client::new();
-                            let response = client.put(self.url.clone())
-                                .json(&ran_template)
-                                .send()
-                                .await
-                                .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
-                            if response.status().is_success() {
-                                Ok(response.json().await.map_err(|e| QueryError::ReqwestError(Arc::new(e)))?)
-                            } else {
-                                let response_text = match response.text().await {
-                                    Ok(text) => text,
-                                    Err(e) => format!("error: \n{}", e),
-                                };
-                                Err(QueryError::RequestFailed {
-                                    response: response_text,
-                                })
-                            }
-                        },
-
-                    }
-                },
-            }
-        };
-
-        // result_block.
-        match result_block {
+        match self.clone().get_cached(variables.clone(), cache_location.clone()).await {
             Ok(result) => {
-                self.put_cached(result.clone(), variables, cache_location).await?;
+                println!("Got cached result..\n");
                 Ok(result)
             },
-            Err(e) => Err(e),
+            Err(_e) => {
+                let client = Client::new();
+                let request_builder = match self.query_type {
+                    QueryType::Get => {
+                        client.get(self.url.clone())
+                    },
+                    QueryType::Put => {
+                        client.put(self.url.clone())
+                    },
+                };
+                let response = request_builder
+                    .json(&ran_template)
+                    .send()
+                    .await
+                    .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
+                if response.status().is_success() {
+                    let result: Value = response.json()
+                        .await
+                        .map_err(|e| QueryError::ReqwestError(Arc::new(e)))?;
+                    self.put_cached(result.clone(), variables, cache_location).await?;
+                    Ok(result)
+                } else {
+                    let response_text = response.text()
+                        .await
+                        .unwrap_or_else(|e| format!("error: \n{}", e));
+                    Err(QueryError::RequestFailed {
+                        response: response_text,
+                    })
+                }
+            },
         }
     }
 }
 
-
+/// An ordered series of Queries
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Queries {
     queries: Vec<Query>,
@@ -206,7 +179,6 @@ impl Queries {
     pub async fn run(self, variables: Map<String, Value>, cache_location: PathBuf) -> Result<Vec<Map<String, Value>>, QueryError> {
         let mut result = Vec::with_capacity(self.queries.len());
         let mut stream = stream::iter(self.queries);
-
         while let Some(query) = stream.next().await {
             let query_result = query.run(variables.clone(), cache_location.clone()).await?;
             let mut query_result_json = Map::new();
@@ -217,6 +189,3 @@ impl Queries {
         Ok(result)
     }
 }
-//// END query
-
-

@@ -10,8 +10,8 @@
 /// digit hexadecimal number.
 
 use crate::elem::{Elem};
-use crate::types_scratch::{Instruction};
-use crate::instruction::{Instructions};
+use crate::untyped_instruction::{Instruction};
+use crate::untyped_instructions::{Instructions};
 
 use std::str::FromStr;
 

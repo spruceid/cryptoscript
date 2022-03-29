@@ -1,21 +1,15 @@
-// use crate::restack::{RestackError};
-use crate::elem::{Elem, ElemType, ElemTypeError, StackType};
+use crate::restack::{Restack, RestackError};
+use crate::location::{LineNo};
+use crate::elem::{Elem};
+use crate::elem_type::{ElemType, ElemTypeError, StackType};
 
-// Stack, StackError, LineNo, 
-// use crate::stack::{Location};
-
-use std::collections::BTreeMap;
 use std::cmp;
-
-use std::fmt;
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
-// use std::alloc::string;
+use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-// use enumset::{EnumSet, enum_set};
-// use serde::{Deserialize, Serialize};
-// use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,7 +22,7 @@ impl Empty {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Nil { }
+pub struct Nil {}
 
 impl Iterator for Nil {
     type Item = Elem;
@@ -216,6 +210,7 @@ impl TypeId {
     }
 }
 
+// TODO: relocate
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Context {
     context: BTreeMap<TypeId, ElemType>,
@@ -638,6 +633,7 @@ impl Type {
 // ```
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        // TODO: fix normalize
         // let self_normalized = self.normalize().map_err(|_| fmt::Error)?;
         let self_normalized = self;
         write!(f,
@@ -706,24 +702,6 @@ mod type_display_tests {
     }
 }
 
-
-
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum TypeIdMapError {
-    #[error("TypeIdMap::get attempted to get a TypeId: {index:?}, not in the map: {type_map:?}; at location in TypeIdMap::run {location:?}")]
-    GetUnknownTypeId {
-        index: TypeId,
-        location: usize,
-        type_map: TypeIdMap,
-    },
-
-    #[error("TypeIdMap::push already exists: mapping from: {from:?}, to: {to:?}, in TypeIdMap {map:?}")]
-    PushExists {
-        from: TypeId,
-        to: TypeId,
-        map: TypeIdMap,
-    },
-}
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum ContextError {
@@ -876,6 +854,40 @@ impl TypeIdMap {
 
     pub fn run(&self, type_vars: Vec<TypeId>) -> Result<Vec<TypeId>, TypeIdMapError> {
         type_vars.iter().enumerate().map(|(i, x)| Ok(self.get(x, i)?.clone())).collect()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Error)]
+pub enum TypeIdMapError {
+    #[error("TypeIdMap::get attempted to get a TypeId: {index:?}, not in the map: {type_map:?}; at location in TypeIdMap::run {location:?}")]
+    GetUnknownTypeId {
+        index: TypeId,
+        location: usize,
+        type_map: TypeIdMap,
+    },
+
+    #[error("TypeIdMap::push already exists: mapping from: {from:?}, to: {to:?}, in TypeIdMap {map:?}")]
+    PushExists {
+        from: TypeId,
+        to: TypeId,
+        map: TypeIdMap,
+    },
+}
+
+impl Restack {
+    // TODO: fix locations: out locations are mislabeled as in locations
+    pub fn type_of(&self, line_no: LineNo) -> Result<Type, RestackError> {
+        let mut context = Context::new();
+        let mut restack_type: Vec<TypeId> = (0..self.restack_depth)
+            .map(|x| context.push(ElemType::any(vec![line_no.in_at(x)])))
+            .collect();
+        let i_type = restack_type.clone();
+        self.run(&mut restack_type)?;
+        Ok(Type {
+            context: context,
+            i_type: i_type,
+            o_type: restack_type,
+        })
     }
 }
 

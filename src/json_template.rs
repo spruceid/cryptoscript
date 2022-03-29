@@ -1,10 +1,4 @@
-// use crate::elem::{Elem, ElemType, ElemTypeError, ElemSymbol, StackType, AnElem};
-// use crate::stack::{Stack, StackError};
-// use crate::restack::{Restack, RestackError};
-// use crate::types::{Context, ContextError, Type, Empty, AnError, Nil};
-
 use std::fmt;
-// use std::fmt::Debug;
 use std::sync::{Arc};
 use std::marker::PhantomData;
 
@@ -183,4 +177,3 @@ impl Template {
         self.template.run(self.variables)
     }
 }
-

@@ -1,9 +1,9 @@
-use crate::elem::{StackType};
+use crate::elem_type::{StackType};
 use crate::stack::{Stack};
-// use crate::restack::{Restack, RestackError};
-// use crate::types::{Context, ContextError, Type, Empty, AnError, Nil};
-use crate::types_scratch::{Instrs, StackInstructionError};
-use crate::instruction::{InstructionError};
+use crate::types_scratch::{ElemsPopError};
+use crate::untyped_instruction::{InstructionError};
+use crate::typed_instruction::{StackInstructionError};
+use crate::typed_instrs::{Instrs};
 use crate::parse::{parse_json, ParseError};
 use crate::query::{QueryError, Queries};
 
@@ -13,7 +13,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
-// use clap::derive;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -52,8 +51,7 @@ enum Commands {
     /// Type check only (monomorphic)
     TypeMono,
 
-    // // TODO: implement
-    // /// Type check only (polymorphic)
+    // // TODO: implement /// Type check only (polymorphic)
     // Type,
 }
 
@@ -63,6 +61,9 @@ pub enum CliError {
     InvalidInputPath {
         input_path: Option<PathBuf>,
     },
+
+    #[error("ElemsPopError:\n{0}")]
+    ElemsPopError(ElemsPopError),
 
     #[error("QueryError:\n{0}")]
     QueryError(QueryError),
@@ -81,6 +82,12 @@ pub enum CliError {
 
     #[error("Cli::get_input: serde_json::from_str threw error:\n{0}")]
     SerdeJsonError(Arc<serde_json::Error>),
+}
+
+impl From<ElemsPopError> for CliError {
+    fn from(error: ElemsPopError) -> Self {
+        Self::ElemsPopError(error)
+    }
 }
 
 impl From<QueryError> for CliError {
@@ -144,13 +151,7 @@ impl Cli {
     pub fn type_of_mono(&self) -> Result<StackType, CliError> {
         let instructions = self.parse_code()?;
         let num_queries = self.parse_queries()?.len();
-
-        println!("instructions:");
-        for instruction in &instructions.instrs {
-            println!("{:?}", instruction);
-        }
-
-        println!("");
+        instructions.debug()?;
         Ok(instructions.type_of_mono(num_queries)?)
     }
 
@@ -167,15 +168,6 @@ impl Cli {
         for query_result in queries_result {
             stack.push_elem(query_result)
         }
-
-        // println!("stack initialized:");
-        // stack.debug()?;
-
-        println!("instructions:");
-        for instruction in &instructions.instrs {
-            println!("{:?}", instruction);
-        }
-        println!("");
         Ok(instructions.run(&mut stack)?)
     }
 
@@ -191,14 +183,17 @@ impl Cli {
             None => self.parse_and_run().await,
             Some(Commands::Parse) => {
                 match self.parse_code() {
-                    Ok(parsed) => println!("parsed:\n{:?}", parsed),
+                    Ok(parsed) => {
+                        parsed.debug()
+                            .unwrap_or_else(|e| println!("Instrs::debug() failed:\n{}", e))
+                    },
                     Err(e) => println!("parsing failed:\n{}", e),
                 }
             },
             Some(Commands::TypeMono) => {
                 match self.type_of_mono() {
                     Ok(type_of) => println!("type:\n{}", type_of),
-                    Err(e) => println!("parsing failed:\n{}", e),
+                    Err(e) => println!("type-mono failed:\n{}", e),
                 }
             },
         }
