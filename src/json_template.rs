@@ -9,18 +9,21 @@ use indexmap::{IndexMap};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
+/// Map<String, T> defined to be convenient to Serialize and Deserialize
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TMap<T> {
     map: IndexMap<String, T>,
 }
 
 impl<T> TMap<T> {
+    /// IndexMap::new
     pub fn new() -> Self {
         TMap {
             map: IndexMap::new(),
         }
     }
 
+    /// IndexMap::insert
     pub fn insert(&mut self, key: String, value: T) -> Option<T> {
         self.map.insert(key, value)
     }
@@ -92,17 +95,32 @@ where
     }
 }
 
+/// serde_json::Value with Var's
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TValue {
+    /// serde_json::Null
     Null,
+
+    /// serde_json::Bool
     Bool(bool),
+
+    /// serde_json::Number
     Number(Number),
+
+    /// serde_json::String
     String(String),
+
+    /// serde_json::Array with Var's
     Array(Vec<TValue>),
+
+    /// serde_json::Object with Var's
     Object(TMap<TValue>),
+
+    /// Named variable. See TValue::run for more detail
     Var(String),
 }
 
+/// An error encountered during the execution of TValue::run
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TValueRunError {
     variable: String,
@@ -111,6 +129,9 @@ pub struct TValueRunError {
 }
 
 impl TValue {
+    /// Convert from JSON, ignoring Var's
+    ///
+    /// Use Deserialize to convert including Var's
     pub fn from_json(json: Value) -> Self {
         match json {
             Value::Null => Self::Null,
@@ -124,12 +145,16 @@ impl TValue {
         }
     }
 
+    /// Convert to JSON using derived Serialize instance
     pub fn to_json(&self) -> Result<Value, TValueError> {
         serde_json::to_value(self)
             .map_err(|e| TValueError::SerdeJsonError(Arc::new(e)))
     }
 
-    /// Resolve all of the (Var)'s using the given (variables)
+    /// Resolve all of the (Var)'s using the given variables.
+    ///
+    /// For example, if the Map includes the association ("foo", "bar"),
+    /// all occurences of Var("foo") will be replaced with "bar".
     pub fn run(self, variables: Map<String, Value>) -> Result<Value, TValueRunError> {
         let self_copy = self.clone();
         match self {
@@ -158,21 +183,41 @@ pub enum TValueError {
     SerdeJsonError(Arc<serde_json::Error>),
 }
 
+/// A template that inclues an associated set of variables
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Template {
-    // TODO: use impl instead of pub
-    pub variables: Map<String, Value>,
-    pub template: TValue,
+    /// Set of variables to resolve on the TValue
+    variables: Map<String, Value>,
+
+    /// Template value
+    template: TValue,
 }
 
 impl Template {
-    pub fn from_json(json: Value) -> Self {
-        Template {
+    /// New template with an empty set of variables
+    pub fn new(template: TValue) -> Self {
+        Self {
             variables: Map::new(),
-            template: TValue::from_json(json),
+            template: template,
         }
     }
 
+    /// Set the given variable name to the given Value
+    pub fn set(&mut self, name: String, value: Value) -> () {
+        self.variables.insert(name, value);
+    }
+
+    /// Deserialize the Template from JSON and instantiate an empty set of variables
+    pub fn from_json(json: Value) -> Self {
+        Self::new(TValue::from_json(json))
+
+        // Template {
+        //     variables: Map::new(),
+        //     template: 
+        // }
+    }
+
+    /// Run the TValue given the provided variables
     pub fn run(self) -> Result<Value, TValueRunError> {
         self.template.run(self.variables)
     }

@@ -5,7 +5,7 @@ use crate::untyped_instruction::{InstructionError};
 use crate::typed_instruction::{StackInstructionError};
 use crate::typed_instrs::{Instrs};
 use crate::parse::{parse_json, ParseError};
-use crate::query::{QueryError, Queries};
+use crate::query::{QueryError, QueryTemplates};
 
 use std::fs;
 use std::io;
@@ -23,7 +23,7 @@ use thiserror::Error;
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 pub struct Cli {
-    /// Queries to run
+    /// QueryTemplates to run
     #[clap(short, long, parse(from_os_str), value_name = "FILE")]
     queries: PathBuf,
 
@@ -133,9 +133,9 @@ impl From<serde_json::Error> for CliError {
 
 impl Cli {
     /// Get queries from self.queries PathBuf and parse JSON
-    pub fn parse_queries(&self) -> Result<Queries, CliError> {
+    pub fn parse_queries(&self) -> Result<QueryTemplates, CliError> {
         let queries_str = fs::read_to_string(self.queries.clone())?;
-        let queries: Queries = serde_json::from_str(&queries_str)?;
+        let queries: QueryTemplates = serde_json::from_str(&queries_str)?;
         Ok(queries)
     }
 
@@ -175,7 +175,10 @@ impl Cli {
         stack.push_elem(input_json_value);
 
         let variables = serde_json::from_str(&self.variables)?;
-        let mut queries_result = self.parse_queries()?.run(variables, self.cache_location.clone()).await?;
+        let mut queries_result = self.parse_queries()?
+            .run(Arc::new(variables),
+                 Arc::new(self.cache_location.clone()))
+            .await?;
         queries_result.reverse();
         for query_result in queries_result {
             stack.push_elem(query_result)

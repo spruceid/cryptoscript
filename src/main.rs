@@ -372,10 +372,10 @@ async fn main() {
     // println!("");
 
 
-    let mut variables = Map::new();
-    variables.insert("contractaddress".to_string(), Value::String("0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string()));
-    variables.insert("address".to_string(), Value::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string()));
-    variables.insert("apikey".to_string(), Value::String("YourApiKeyToken".to_string()));
+    // let mut variables = Map::new();
+    // variables.insert("contractaddress".to_string(), Value::String("0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string()));
+    // variables.insert("address".to_string(), Value::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string()));
+    // variables.insert("apikey".to_string(), Value::String("YourApiKeyToken".to_string()));
 
     let mut template = TMap::new();
     template.insert("type".to_string(), TValue::String("GET".to_string()));
@@ -390,10 +390,10 @@ async fn main() {
     query_parameters.insert("apikey".to_string(), TValue::Var("apikey".to_string()));
     template.insert("parameters".to_string(), TValue::Object(query_parameters.clone()));
 
-    let _full_template = Template {
-        variables: variables,
-        template: TValue::Object(template),
-    };
+    let mut full_template = Template::new(TValue::Object(template));
+    full_template.set("contractaddress".to_string(), Value::String("0x57d90b64a1a57749b0f932f1a3395792e12e7055".to_string()));
+    full_template.set("address".to_string(), Value::String("0xe04f27eb70e025b78871a2ad7eabe85e61212761".to_string()));
+    full_template.set("apikey".to_string(), Value::String("YourApiKeyToken".to_string()));
 
     // let json_template = serde_json::to_string_pretty(&serde_json::to_value(full_template.clone()).unwrap()).unwrap();
     // println!("{}", json_template);

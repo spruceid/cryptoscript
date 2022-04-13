@@ -855,6 +855,10 @@ pub enum TypeIdMapError {
 }
 
 impl Restack {
+    /// Calculate the Type of a Restack instruction
+    ///
+    /// In short, the input stack is [x_1, x_2, .. x_restack_depth]
+    /// and the output stack is self.restack(input_stack)
     // TODO: fix locations: out locations are mislabeled as in locations
     pub fn type_of(&self, line_no: LineNo) -> Result<Type, RestackError> {
         let mut context = Context::new();
