@@ -1,7 +1,7 @@
 use crate::elem::{ElemSymbol};
 use crate::stack::{Stack};
 use crate::restack::{RestackError};
-use crate::types::{Type, TypeError, AnError};
+use crate::types::{Type, TypeError};
 use crate::types_scratch::{ElemsPopError};
 use crate::types_scratch::{IOList, IsList};
 use crate::untyped_instruction::{Instruction};
@@ -12,12 +12,22 @@ use std::sync::{Arc};
 
 use thiserror::Error;
 
+/// A typed instruction with explicit input, output, and error types
 pub trait IsInstructionT: Debug {
+    /// The input/output type of the instruction
     type IO: IOList;
-    type Error: AnError;
 
+    /// All possible errors that can result from running this instruction.
+    /// Empty can be used for none.
+    type Error: std::error::Error;
+
+    /// Convert to an untyped instruction
     fn to_instruction(&self) -> Result<Instruction, StackInstructionError>;
+
+    /// The String name of the Instruction
     fn name(x: PhantomData<Self>) -> String;
+
+    /// Run the instruction, returning all results using the IOList interface
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error>;
 }
 

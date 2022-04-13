@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use crate::elem::{Elem, ElemSymbol};
 use crate::restack::{Restack};
 

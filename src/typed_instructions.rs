@@ -1,6 +1,6 @@
 use crate::elem::{Elem, ElemSymbol};
 use crate::an_elem::{AnElem};
-use crate::types::{Empty, AnError, Nil};
+use crate::types::{Empty, Nil};
 use crate::types_scratch::{AllElems, all_elems_untyped, Singleton, Cons, ReturnSingleton, ConsOut, Or, ReturnOr, IsList};
 use crate::untyped_instruction::{Instruction};
 use crate::typed_instruction::{IsInstructionT, StackInstructionError};
@@ -17,13 +17,14 @@ use generic_array::typenum::{U0, U1, U2};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
+
+/// forall T <- {Vec<u8>, Vec<Value>, Map<String, Value>}
+/// input: [x: T, y: T]
+/// output: [x.into_iter().chain(y.into_iter()).collect(): T]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Concat {}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
-pub enum ConcatError {}
-impl AnError for ConcatError {}
 
-// TODO: add string!
+// TODO: add String!
 // (Self::String(x), Self::String(y)) => {
 //     Ok(Self::String(String::from_utf8(Self::concat_generic(Vec::from(x.clone()), Vec::from(y.clone())))
 //                     .map_err(|_| ElemError::ConcatInvalidUTF8 { lhs: x, rhs: y })?))
@@ -34,7 +35,7 @@ impl IsInstructionT for Concat {
     type IO = ConsOut<ReturnOr<Vec<u8>,             U2,
                       ReturnOr<Vec<Value>,          U2,
                ReturnSingleton<Map<String, Value>,  U2>>>, Nil>;
-    type Error = ConcatError;
+    type Error = Empty;
 
     fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
         Ok(Instruction::Concat)
@@ -67,12 +68,16 @@ impl IsInstructionT for Concat {
     }
 }
 
+
+/// input: [x: Bool]
+/// output: [x: Bool]
+///
+/// Fails iff x is false
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AssertTrue {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
 #[error("AssertTrue: found false")]
 pub struct AssertTrueError {}
-impl AnError for AssertTrueError {}
 
 impl IsInstructionT for AssertTrue {
     type IO = ConsOut<ReturnSingleton<bool, U1>, Nil>;
@@ -99,8 +104,12 @@ impl IsInstructionT for AssertTrue {
 }
 
 
+
+/// input: []
+/// output: [T]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Push<T: AnElem> {
+    /// The value to push
     pub push: T,
 }
 
@@ -123,12 +132,10 @@ impl<T: AnElem> IsInstructionT for Push<T> {
 }
 
 
-
+/// input: [Bytes]
+/// output: [Bytes]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HashSha256 {}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
-pub enum HashSha256Error {}
-impl AnError for HashSha256Error {}
 
 impl IsInstructionT for HashSha256 {
     type IO = ConsOut<ReturnSingleton<Vec<u8>, U1>, Nil>;
@@ -150,7 +157,11 @@ impl IsInstructionT for HashSha256 {
     }
 }
 
-
+/// forall T <- {Vec<u8>, String, Vec<Value>, Map<String, Value>}
+/// input: [offset: Number, length: Number, iterable: T]
+/// output: [iterable: T]
+///
+/// Fails if slice is missing or too big
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Slice {}
 
@@ -184,8 +195,6 @@ impl From<FromUtf8Error> for SliceError {
         Self::FromUtf8Error(error)
     }
 }
-
-impl AnError for SliceError {}
 
 // bytes, string, array, object
 impl IsInstructionT for Slice {
@@ -266,6 +275,11 @@ impl IsInstructionT for Slice {
 }
 
 
+
+/// input: [index: Number, iterable: Iterator<Item=Value>]
+/// output: [iterable[index]: Value]
+///
+/// Fails if index is missing or too big
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Index {}
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -282,7 +296,6 @@ pub enum IndexError {
         iterable: String,
     },
 }
-impl AnError for IndexError {}
 
 // bytes, array, object
 impl IsInstructionT for Index {
@@ -336,6 +349,10 @@ impl IsInstructionT for Index {
     }
 }
 
+/// input: [x]
+/// output: [serde_json::to_value(x): Value]
+///
+/// Fails if serde_json::to_value does
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ToJson {}
 #[derive(Clone, Debug, Error)]
@@ -344,7 +361,6 @@ pub struct ToJsonError {
     input: Elem,
     error: Arc<serde_json::Error>,
 }
-impl AnError for ToJsonError {}
 
 impl IsInstructionT for ToJson {
     type IO = ConsOut<ReturnSingleton<Value, U0>, Cons<AllElems<U1>, Nil>>;
@@ -372,6 +388,10 @@ impl IsInstructionT for ToJson {
     }
 }
 
+/// input: [key: String, map: Map<String, Value>]
+/// output: [map.get(key): Value]
+///
+/// Fails if key is missing
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Lookup {}
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -380,7 +400,6 @@ pub struct LookupError {
     key: String,
     map: Map<String, Value>,
 }
-impl AnError for LookupError {}
 
 impl IsInstructionT for Lookup {
     type IO = ConsOut<ReturnSingleton<Value, U0>,
@@ -410,8 +429,11 @@ impl IsInstructionT for Lookup {
 }
 
 
+/// input: [x: Value]
+/// output: [AJsonElem::from_value(PhantomData::<T>, x): T]
 #[derive(Debug)]
 pub struct UnpackJson<T: AnElem> {
+    /// The target type of the Value to unpack
     pub t: PhantomData<T>,
 }
 #[derive(Debug, Error)]
@@ -420,7 +442,6 @@ pub struct UnpackJsonError {
     elem_symbol: EnumSet<ElemSymbol>,
     input: Value,
 }
-impl AnError for UnpackJsonError {}
 
 pub trait AJsonElem: AnElem {
     fn to_value(self) -> Value;
@@ -540,6 +561,10 @@ impl<T: AJsonElem> IsInstructionT for UnpackJson<T> {
 }
 
 
+/// input: [x: String]
+/// output: [x.into_bytes(): Vec<u8>]
+///
+/// false if incomparable
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StringToBytes {}
 
@@ -563,6 +588,11 @@ impl IsInstructionT for StringToBytes {
     }
 }
 
+/// forall T,
+/// input: [x: T, y: T]
+/// output: [x <= y : bool]
+///
+/// false if incomparable
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CheckLe {}
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -571,7 +601,6 @@ pub struct CheckLeError {
     lhs: Elem,
     rhs: Elem,
 }
-impl AnError for CheckLeError {}
 
 impl IsInstructionT for CheckLe {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
@@ -606,6 +635,11 @@ impl IsInstructionT for CheckLe {
     }
 }
 
+/// forall T,
+/// input: [x: T, y: T]
+/// output: [x < y : bool]
+///
+/// false if incomparable
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CheckLt {}
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -614,7 +648,6 @@ pub struct CheckLtError {
     lhs: Elem,
     rhs: Elem,
 }
-impl AnError for CheckLtError {}
 
 impl IsInstructionT for CheckLt {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
@@ -649,6 +682,11 @@ impl IsInstructionT for CheckLt {
 }
 
 
+/// forall T,
+/// input: [x: T, y: T]
+/// output: [x == y : bool]
+///
+/// false if incomparable
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CheckEq {}
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
@@ -657,7 +695,6 @@ pub struct CheckEqError {
     lhs: Elem,
     rhs: Elem,
 }
-impl AnError for CheckEqError {}
 
 impl IsInstructionT for CheckEq {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<AllElems<U2>, Nil>>;
@@ -696,13 +733,9 @@ impl IsInstructionT for CheckEq {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StringEq {}
 
-#[derive(Clone, Debug, PartialEq, Eq, Error)]
-pub enum StringEqError {}
-impl AnError for StringEqError {}
-
 impl IsInstructionT for StringEq {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<Singleton<String, U2>, Nil>>;
-    type Error = StringEqError;
+    type Error = Empty;
 
     fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
         Ok(Instruction::StringEq)
@@ -722,15 +755,14 @@ impl IsInstructionT for StringEq {
     }
 }
 
+/// input: [x: Vec<u8>, y: Vec<u8>]
+/// output: [x == y: bool]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BytesEq {}
-#[derive(Clone, Debug, PartialEq, Eq, Error)]
-pub enum BytesEqError {}
-impl AnError for BytesEqError {}
 
 impl IsInstructionT for BytesEq {
     type IO = ConsOut<ReturnSingleton<bool, U0>, Cons<Singleton<Vec<u8>, U2>, Nil>>;
-    type Error = BytesEqError;
+    type Error = Empty;
 
     fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
         Ok(Instruction::BytesEq)

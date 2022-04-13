@@ -5,8 +5,10 @@ use crate::typed_instrs::Instrs;
 
 use serde::{Deserialize, Serialize};
 
+/// A list of untyped instructions
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct Instructions {
+    /// A list of untyped instructions
     pub instructions: Vec<Instruction>,
 }
 
@@ -20,6 +22,7 @@ impl IntoIterator for Instructions {
 }
 
 impl Instructions {
+    /// Convert to a list of typed instructions
     pub fn to_instrs(self) -> Result<Instrs, InstructionError> {
         Ok(Instrs {
             instrs: self.into_iter().map(|x| x.to_instr()).collect::<Result<Vec<Instr>, InstructionError>>()?,
@@ -28,6 +31,7 @@ impl Instructions {
 }
 
 impl Instrs {
+    /// Convert to a list of untyped instructions
     pub fn to_instructions(self) -> Result<Instructions, StackInstructionError> {
         Ok(Instructions {
             instructions: self.instrs.into_iter().map(|x| x.to_instruction()).collect::<Result<Vec<Instruction>, StackInstructionError>>()?,

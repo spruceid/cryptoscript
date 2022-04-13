@@ -32,26 +32,6 @@ impl Iterator for Nil {
     }
 }
 
-// TODO: add necessary traits, methods and rename to IsInstructionError or IsInstrError
-pub trait AnError: std::error::Error {
-    // fn to_stack_error(&self, line_no: LineNo) -> StackError;
-}
-
-// impl StackError {
-//     fn instruction_default(name: &str, error_str: &str, line_no: LineNo) -> Self {
-//         Self::RunInstruction {
-//             name: name.to_string(),
-//             error: error_str.to_string(),
-//             line_no: line_no,
-//         }
-//     }
-// }
-
-impl AnError for Empty {
-    // fn to_stack_error(&self, _line_no: LineNo) -> StackError {
-    //     self.absurd(PhantomData)
-    // }
-}
 
 
 
