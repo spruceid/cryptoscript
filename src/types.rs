@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
 pub enum Empty {}
 
 impl Empty {

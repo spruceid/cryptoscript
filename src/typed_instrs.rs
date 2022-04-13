@@ -11,18 +11,22 @@ use std::sync::{Arc};
 
 use enumset::EnumSet;
 
+/// A list of Instr's. See Instr for more info
 #[derive(Clone, Debug)]
 pub struct Instrs {
+    /// A list of Instr's
     pub instrs: Vec<Instr>,
 }
 
 impl Instrs {
+    /// A new empty list of Instr's
     pub fn new() -> Self {
         Instrs {
             instrs: vec![],
         }
     }
 
+    /// Print the list of Instr's for debugging
     pub fn debug(&self) -> Result<(), ElemsPopError> {
         println!("instructions:");
         for (line_no, instruction) in self.instrs.iter().enumerate() {
@@ -74,6 +78,9 @@ impl Instrs {
         Ok(stack_type)
     }
 
+    /// Run the list of individually-typed instructions. It can fail if adjacent
+    /// instructions have non-matching types, e.g. if "Push(true)" is
+    /// immediately followed by "UnpackJson".
     pub fn run(&self, stack: &mut Stack) -> Result<(), StackInstructionError> {
         for (line_no, instr_or_restack) in (&self.instrs).into_iter().enumerate() {
             stack.debug().map_err(|e| StackInstructionError::DebugJsonError(Arc::new(e)))?;
@@ -112,10 +119,12 @@ impl Instrs {
         Ok(())
     }
 
+    /// Push an instruction that IsStackInstruction onto the list of instructions
     pub fn instr(&mut self, instr: impl IsStackInstruction + 'static) -> () {
         self.instrs.push(Instr::Instr(Arc::new(instr)))
     }
 
+    /// Push a Restack onto the list of instructions
     pub fn restack(&mut self, restack: Restack) -> () {
         self.instrs.push(Instr::Restack(restack))
     }

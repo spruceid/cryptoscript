@@ -16,6 +16,10 @@ use clap::{Parser, Subcommand};
 use serde_json::Value;
 use thiserror::Error;
 
+/// Command line interface arguments
+///
+/// Runs the given code (parsed as JSON) on the given input (parsed as JSON)
+/// and the queries (parsed as JSON into a template
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 pub struct Cli {
@@ -39,10 +43,12 @@ pub struct Cli {
     #[clap(short, long, parse(from_os_str), value_name = "FILE")]
     input: Option<PathBuf>,
 
+    /// Subcommand
     #[clap(subcommand)]
     command: Option<Commands>,
 }
 
+/// Command line interface subcommands (optional)
 #[derive(Subcommand)]
 enum Commands {
     /// Parse only
@@ -126,17 +132,20 @@ impl From<serde_json::Error> for CliError {
 }
 
 impl Cli {
+    /// Get queries from self.queries PathBuf and parse JSON
     pub fn parse_queries(&self) -> Result<Queries, CliError> {
         let queries_str = fs::read_to_string(self.queries.clone())?;
         let queries: Queries = serde_json::from_str(&queries_str)?;
         Ok(queries)
     }
 
+    /// Get code from self.code PathBuf and parse JSON
     pub fn parse_code(&self) -> Result<Instrs, CliError> {
         let instructions_str = fs::read_to_string(self.code.clone())?;
         Ok(parse_json(&instructions_str)?.to_instrs()?)
     }
 
+    /// Get input from self.input PathBuf and parse JSON
     pub fn get_input(&self) -> Result<Value, CliError> {
         if let Some(input_path) = self.input.as_deref() {
             let input_str = fs::read_to_string(input_path)?;
@@ -148,6 +157,7 @@ impl Cli {
         }
     }
 
+    /// Monomorphic type of input instructions
     pub fn type_of_mono(&self) -> Result<StackType, CliError> {
         let instructions = self.parse_code()?;
         let num_queries = self.parse_queries()?.len();
@@ -155,6 +165,8 @@ impl Cli {
         Ok(instructions.type_of_mono(num_queries)?)
     }
 
+    /// Run Cli::parse_code, get input and queries, run queries, and run the
+    /// code on the resulting queries
     pub async fn parse_and_run_result(&self) -> Result<(), CliError> {
         let instructions = self.parse_code()?;
         let mut stack = Stack::new();
@@ -171,6 +183,7 @@ impl Cli {
         Ok(instructions.run(&mut stack)?)
     }
 
+    /// Run Cli::parse_and_run_result and print its result
     pub async fn parse_and_run(&self) -> () {
         match self.parse_and_run_result().await {
             Ok(()) => println!("successful!"),
@@ -178,6 +191,7 @@ impl Cli {
         }
     }
 
+    /// Run a set of Cli arguments
     pub async fn run(&self) -> () {
         match self.command {
             None => self.parse_and_run().await,

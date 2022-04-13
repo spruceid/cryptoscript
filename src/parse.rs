@@ -17,6 +17,7 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
+/// Parse a list of Instruction's using serde_json::from_str
 pub fn parse_json(input: &str) -> Result<Instructions, ParseError> {
     match serde_json::from_str(&input) {
         Err(serde_error) => Err(ParseError::SerdeJsonError(serde_error)),
@@ -24,6 +25,8 @@ pub fn parse_json(input: &str) -> Result<Instructions, ParseError> {
     }
 }
 
+/// Parse a ";"-separated list of instructions, where individual Instruction's
+/// are parsed with parse_instruction
 pub fn parse(input: &str) -> Result<Instructions, ParseError> {
     Ok(Instructions {
         instructions:
@@ -36,6 +39,7 @@ pub fn parse(input: &str) -> Result<Instructions, ParseError> {
     })
 }
 
+/// Parse an individual Instruction
 fn parse_instruction(term: &str) -> Result<Instruction, ParseError> {
     if let Some(rest) = term.strip_prefix("push") {
         return Ok(Instruction::Push(rest.trim().parse()?));

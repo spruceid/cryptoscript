@@ -673,8 +673,11 @@ impl IsInstructionT for CheckEq {
     }
 }
 
+/// input: [x: String, y: String]
+/// output: [x == y: bool]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StringEq {}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StringEqError {
     lhs: String,

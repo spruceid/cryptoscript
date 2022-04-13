@@ -8,17 +8,22 @@ use crate::typed_instructions::{AssertTrue, Lookup, Concat, Slice, Push,
 
 use std::marker::PhantomData;
 use std::fmt::Debug;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use serde_json::{Map, Number, Value};
 
+/// A dynamically-resolved IsStackInstruction or Restack
 #[derive(Clone, Debug)]
 pub enum Instr {
+    /// Dynamically-resolved IsStackInstruction
     Instr(Arc<dyn IsStackInstruction>),
+
+    /// Restack
     Restack(Restack),
 }
 
 impl Instr {
+    /// Convert an Instr (typed) to an Instruction (untyped)
     pub fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
         match self {
             Self::Instr(instr) => instr.to_instruction(),
@@ -28,6 +33,8 @@ impl Instr {
 }
 
 impl Instruction {
+    /// Convert an Instruction to an Instr, only failing when UnpackJson is
+    /// applied to an ElemSymbol that doesn't represent valid JSON
     pub fn to_instr(self) -> Result<Instr, InstructionError> {
         match self {
             Self::Push(elem) => Ok(Instr::Instr(Arc::new(Push { push: elem }))),
