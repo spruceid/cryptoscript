@@ -1,4 +1,4 @@
-use crate::elem::Elem;
+use crate::elem::{Elem, ElemSymbol};
 use crate::an_elem::{AnElem};
 use crate::types::{Empty, AnError, Nil};
 use crate::types_scratch::{AllElems, all_elems_untyped, Singleton, Cons, ReturnSingleton, ConsOut, Or, ReturnOr, IsList};
@@ -12,14 +12,15 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::string::FromUtf8Error;
 
+use enumset::EnumSet;
 use generic_array::typenum::{U0, U1, U2};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Concat {}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ConcatError {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
+pub enum ConcatError {}
 impl AnError for ConcatError {}
 
 // TODO: add string!
@@ -68,13 +69,13 @@ impl IsInstructionT for Concat {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AssertTrue {}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
+#[error("AssertTrue: found false")]
 pub struct AssertTrueError {}
 impl AnError for AssertTrueError {}
 
 impl IsInstructionT for AssertTrue {
     type IO = ConsOut<ReturnSingleton<bool, U1>, Nil>;
-    // TODO: replace w/ Empty
     type Error = AssertTrueError;
 
     fn to_instruction(&self) -> Result<Instruction, StackInstructionError> {
@@ -125,8 +126,8 @@ impl<T: AnElem> IsInstructionT for Push<T> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HashSha256 {}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct HashSha256Error {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
+pub enum HashSha256Error {}
 impl AnError for HashSha256Error {}
 
 impl IsInstructionT for HashSha256 {
@@ -153,23 +154,28 @@ impl IsInstructionT for HashSha256 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Slice {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum SliceError {
+    #[error("SliceError::OffsetNotU64: \n{0}")]
     OffsetNotU64(Number),
 
+    #[error("SliceError::LengthNotU64: \n{0}")]
     LengthNotU64(Number),
 
+    #[error("SliceError::Overflow: \noffset: {offset} \nlength: {length}")]
     Overflow {
         offset: Number,
         length: Number,
     },
 
+    #[error("SliceError::TooShort: \noffset: {offset} \nlength: {length} \n{iterable}")]
     TooShort {
         offset: usize,
         length: usize,
         iterable: String,
     },
 
+    #[error("SliceError::FromUtf8Error: \n{0}")]
     FromUtf8Error(FromUtf8Error),
 }
 
@@ -332,7 +338,8 @@ impl IsInstructionT for Index {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ToJson {}
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Error)]
+#[error("ToJson failed with a serde_json error: \n{input} \n{error}")]
 pub struct ToJsonError {
     input: Elem,
     error: Arc<serde_json::Error>,
@@ -367,7 +374,8 @@ impl IsInstructionT for ToJson {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Lookup {}
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("Lookup failed, key not in map: \n{key:?} \n{map:?}")]
 pub struct LookupError {
     key: String,
     map: Map<String, Value>,
@@ -406,8 +414,12 @@ impl IsInstructionT for Lookup {
 pub struct UnpackJson<T: AnElem> {
     pub t: PhantomData<T>,
 }
-#[derive(Debug)]
-pub struct UnpackJsonError {}
+#[derive(Debug, Error)]
+#[error("UnpackJson failed to unpack JSON: \n{elem_symbol:?} \n{input}")]
+pub struct UnpackJsonError {
+    elem_symbol: EnumSet<ElemSymbol>,
+    input: Value,
+}
 impl AnError for UnpackJsonError {}
 
 pub trait AJsonElem: AnElem {
@@ -518,7 +530,10 @@ impl<T: AJsonElem> IsInstructionT for UnpackJson<T> {
         let json = &x.clone().tl().hd().array[0];
         let result =
             AJsonElem::from_value(PhantomData::<T>, json.clone())
-            .ok_or_else(|| UnpackJsonError {})?;
+            .ok_or_else(|| UnpackJsonError {
+                elem_symbol: AnElem::elem_symbol(PhantomData::<T>),
+                input: json.clone(),
+            })?;
         returning.returning(result);
         Ok(())
     }
@@ -550,7 +565,8 @@ impl IsInstructionT for StringToBytes {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CheckLe {}
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("CheckLe applied to incomparable elements: \n{lhs:?}\n {rhs:?}\n")]
 pub struct CheckLeError {
     lhs: Elem,
     rhs: Elem,
@@ -592,7 +608,8 @@ impl IsInstructionT for CheckLe {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CheckLt {}
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("CheckLt applied to incomparable elements: \n{lhs:?}\n {rhs:?}\n")]
 pub struct CheckLtError {
     lhs: Elem,
     rhs: Elem,
@@ -634,7 +651,8 @@ impl IsInstructionT for CheckLt {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CheckEq {}
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("CheckEq applied to incomparable elements: \n{lhs:?}\n {rhs:?}\n")]
 pub struct CheckEqError {
     lhs: Elem,
     rhs: Elem,
@@ -678,11 +696,8 @@ impl IsInstructionT for CheckEq {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StringEq {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StringEqError {
-    lhs: String,
-    rhs: String,
-}
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum StringEqError {}
 impl AnError for StringEqError {}
 
 impl IsInstructionT for StringEq {
@@ -702,27 +717,15 @@ impl IsInstructionT for StringEq {
         let array = &x.clone().tl().hd().array;
         let lhs = array[0].clone();
         let rhs = array[1].clone();
-        let cmp_result = lhs.partial_cmp(&rhs)
-            .ok_or_else(|| StringEqError {
-                lhs: lhs,
-                rhs: rhs
-        })?;
-        let result = match cmp_result {
-            cmp::Ordering::Equal => true,
-            _ => false,
-        };
-        returning.returning(result);
+        returning.returning(lhs == rhs);
         Ok(())
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BytesEq {}
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BytesEqError {
-    lhs: Vec<u8>,
-    rhs: Vec<u8>,
-}
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum BytesEqError {}
 impl AnError for BytesEqError {}
 
 impl IsInstructionT for BytesEq {
@@ -742,16 +745,7 @@ impl IsInstructionT for BytesEq {
         let array = &x.clone().tl().hd().array;
         let lhs = array[0].clone();
         let rhs = array[1].clone();
-        let cmp_result = lhs.partial_cmp(&rhs)
-            .ok_or_else(|| BytesEqError {
-                lhs: lhs,
-                rhs: rhs
-        })?;
-        let result = match cmp_result {
-            cmp::Ordering::Equal => true,
-            _ => false,
-        };
-        returning.returning(result);
+        returning.returning(lhs == rhs);
         Ok(())
     }
 }

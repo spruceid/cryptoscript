@@ -33,7 +33,7 @@ impl Iterator for Nil {
 }
 
 // TODO: add necessary traits, methods and rename to IsInstructionError or IsInstrError
-pub trait AnError: std::fmt::Debug {
+pub trait AnError: std::error::Error {
     // fn to_stack_error(&self, line_no: LineNo) -> StackError;
 }
 
