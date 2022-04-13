@@ -315,8 +315,7 @@ where
             info: vec![],
         };
         let elem_type_tl = Elems::elem_type(PhantomData::<U>)?;
-        elem_type_hd.union(elem_type_tl)
-            .map_err(|e| ElemsPopError::ElemTypeError(e))
+        Ok(elem_type_hd.union(elem_type_tl))
     }
 }
 

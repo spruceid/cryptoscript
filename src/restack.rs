@@ -3,41 +3,46 @@ use std::cmp;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+// TODO: relocate to Stack module?
+/// Stack index
 pub type StackIx = usize;
 
-// Stack manipulation:
-// - All stack manipulations:
-//     + dig
-//     + dug
-//     + dip
-//     + dup
-//     + swap
-//     + drop
-// - they all boil down to:
-//     1. drop inputs
-//     2. replicate inputs
-//     3. reorder inputs
-// - which conveniently boils down to:
-//     + xs : [ old_stack_index ]
-//     + map (\x -> xs !! x) xs
-// - successful iff all old_stack_index's < length stack
-// - pretty-printing?
+// TODO: pretty-printing?
 //     + REQUIRED: constant compile-time choice of manipulations
 //     + local: just print [x_old_stack_index_0, x_old_stack_index_1, ..]
 //     + global: keep track of stack indices (always possible?) and print where it's from???
+/// Stack manipulation:
+/// - All these stack manipulations:
+///     + dig
+///     + dug
+///     + dip
+///     + dup
+///     + swap
+///     + drop
+/// - Boil down to:
+///     1. drop inputs
+///     2. replicate inputs
+///     3. reorder inputs
+/// - Which conveniently boils down to:
+///     + xs : [ old_stack_index ]
+///     + map (\x -> xs !! x) xs
+/// - Which is successful iff all old_stack_index's < stack.len()
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct Restack {
+    /// Number of input stack elements to restack
     pub restack_depth: StackIx,
+
+    /// Vector of output stack indices
     pub restack_vec: Vec<StackIx>,
 }
 
 impl Restack {
-    // (consumed_input_stack_size, produced_output_stack_size)
+    /// (consumed_input_stack_size, produced_output_stack_size)
     pub fn stack_io_counts(&self) -> (usize, usize) {
         (self.restack_depth, self.restack_vec.len())
     }
 
-    // identity
+    /// Identity Restack, i.e. does nothing
     pub fn id() -> Self {
         Restack {
             restack_depth: 0,
@@ -45,7 +50,7 @@ impl Restack {
         }
     }
 
-    // swap first two stack elements
+    /// swap first two stack elements
     pub fn swap() -> Self {
         Restack {
             restack_depth: 2,
@@ -53,7 +58,7 @@ impl Restack {
         }
     }
 
-    // drop the first (n) stack elements
+    /// drop the first (n) stack elements
     pub fn drop_n(n: usize) -> Self {
         Restack {
             restack_depth: n,
@@ -61,12 +66,12 @@ impl Restack {
         }
     }
 
-    // drop the first stack element
+    /// Drop the first stack element
     pub fn drop() -> Self {
         Self::drop_n(1)
     }
 
-    // duplicates the (ix)th value onto the top of the stack (0-indexed)
+    /// Duplicates the (ix)th value onto the top of the stack (0-indexed)
     pub fn dup_n(ix: usize) -> Self {
         Restack {
             restack_depth: ix+1,
@@ -74,13 +79,14 @@ impl Restack {
         }
     }
 
-    // duplicates the 0th value onto the top of the stack (0-indexed)
+    /// Duplicates the 0th value onto the top of the stack (0-indexed)
     pub fn dup() -> Self {
         Self::dup_n(0)
     }
 
-    // pull the (ix)th element to the top of the stack
-    // dig 4 = { 5, [3, 0, 1, 2] }
+    /// Pull the (ix)th element to the top of the stack
+    ///
+    /// dig 4 = { 5, [3, 0, 1, 2] }
     pub fn dig(ix: usize) -> Self {
         Restack {
             restack_depth: ix+1,
@@ -88,8 +94,9 @@ impl Restack {
         }
     }
 
-    // push the top of the stack to the (ix)th position
-    // dug 4 = { 5, [1, 2, 3, 0] }
+    /// Push the top of the stack to the (ix)th position
+    ///
+    /// dug 4 = { 5, [1, 2, 3, 0] }
     pub fn dug(ix: usize) -> Self {
         Restack {
             restack_depth: ix+1,
@@ -97,7 +104,7 @@ impl Restack {
         }
     }
 
-    // restack a Stack
+    /// Restack a Stack. See Restack::is_valid_depth for validity checking before running
     pub fn run<T: Clone>(&self, stack: &mut Vec<T>) -> Result<(), RestackError> {
         if self.restack_depth <= stack.len() {
             let result = self.restack_vec.iter().map(|&restack_index|
@@ -120,15 +127,21 @@ impl Restack {
         }
     }
 
-    // self.is_valid_depth() ->
-    // self.restack_depth <= xs.len() ->
-    // self.run(xs).is_ok() == true
+    /// If true, Restack::run must succeed on all inputs whose lengths are at
+    /// least as long as self.restack_depth
+    ///
+    /// self.is_valid_depth() ->
+    /// self.restack_depth <= xs.len() ->
+    /// self.run(xs).is_ok() == true
     pub fn is_valid_depth(&self) -> bool {
         !self.restack_vec.iter().any(|&restack_index| self.restack_depth <= restack_index)
     }
 
-    // NOTE: unchecked (run is_valid_depth on arguments for safe version)
-    // x.append(y).run(s) == x.run(y.run(s))
+    /// Append two Restack's, i.e. compose them together:
+    ///
+    /// x.append(y).run(s) == x.run(y.run(s))
+    ///
+    /// NOTE: inputs and result are unchecked (run is_valid_depth on arguments for safe version)
     pub fn append(&self, other: Self) -> Self {
         Restack {
             restack_depth: cmp::max(self.restack_depth, other.restack_depth),

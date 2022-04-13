@@ -210,11 +210,6 @@ impl Template {
     /// Deserialize the Template from JSON and instantiate an empty set of variables
     pub fn from_json(json: Value) -> Self {
         Self::new(TValue::from_json(json))
-
-        // Template {
-        //     variables: Map::new(),
-        //     template: 
-        // }
     }
 
     /// Run the TValue given the provided variables

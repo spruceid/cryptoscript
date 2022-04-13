@@ -8,12 +8,20 @@ use std::marker::PhantomData;
 use enumset::EnumSet;
 use serde_json::{Map, Number, Value};
 
+/// Valid Elem(ent) types
+///
+/// TODO: make closed
 pub trait AnElem: Clone + Debug + PartialEq {
-    // TODO: rename
+    // TODO: rename?
 
     // fn elem_symbol(t: PhantomData<Self>) -> ElemType;
+    /// The ElemSymbol's associated with the Elem's that can form this type
     fn elem_symbol(t: PhantomData<Self>) -> EnumSet<ElemSymbol>;
+
+    /// Convert the Self to Elem by using one of Elem's constructors
     fn to_elem(self) -> Elem;
+
+    /// Convert the given Elem to Self through pattern-matching
     fn from_elem(t: PhantomData<Self>, x: Elem) -> Result<Self, AnElemError>;
 }
 
@@ -201,17 +209,26 @@ impl AnElem for Value {
 }
 
 
+/// AnElem::from_elem errors
 #[derive(Clone, Debug, Error)]
 pub enum AnElemError {
+    /// AnElem::from_elem: element popped from the Stack wasn't the expected type
     #[error("AnElem::from_elem: element popped from the stack\n\n{found}\n\nwasn't the expected type:\n{expected:?}")]
     UnexpectedElemType {
+        /// ElemSymbol's expected to be popped from the Stack
         expected: EnumSet<ElemSymbol>,
+
+        /// Elem popped from the Stack
         found: Elem,
     },
 
+    /// Converting Elem to Or failed
     #[error("<Or<_, _> as AnElem>::from_elem: {e_hd:?}\n{e_tl:?}")]
     PopOr {
+        /// x in Or<x, y> 
         e_hd: Box<Self>,
+
+        /// y in Or<x, y> 
         e_tl: Box<Self>,
     },
 }

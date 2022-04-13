@@ -2,8 +2,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 use quickcheck::{empty_shrinker, Arbitrary, Gen};
 
+/// Wrapped Number for Arbitrary generation
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArbitraryNumber {
+    /// Wrapped Number
     pub number: Number,
 }
 
@@ -56,8 +58,10 @@ impl Arbitrary for ArbitraryNumber {
 }
 
 
+/// Wrapped Map, encoded as a Vec of (key, value) pairs, for Arbitrary generation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArbitraryMap {
+    /// Map encoded as a Vec of (key, value) pairs
     pub map: Vec<(String, Value)>,
 }
 
@@ -81,8 +85,10 @@ impl Arbitrary for ArbitraryMap {
 }
 
 
+/// Wrapped Value for Arbitrary generation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArbitraryValue {
+    /// Wrapped Value
     pub value: Value,
 }
 

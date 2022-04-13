@@ -10,15 +10,31 @@ use quickcheck::{empty_shrinker, Arbitrary, Gen};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
+/// An untyped Stack element
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Elem {
+    /// Unit value (i.e. the empty struct)
     Unit,
+
+    /// A boolean
     Bool(bool),
+
+    /// A JSON Number
     Number(Number),
+
+    /// An array of bytes
     Bytes(Vec<u8>),
+
+    /// A JSON String
     String(String),
+
+    /// A JSON Array
     Array(Vec<Value>),
+
+    /// A JSON Object
     Object(Map<String, Value>),
+
+    /// A JSON Value
     Json(Value),
 }
 
@@ -65,15 +81,31 @@ impl Display for Elem {
 
 
 // EnumSetType implies: Copy, PartialEq, Eq
+/// Elem as an enum of unit (i.e. empty struct) variants
 #[derive(EnumSetType, Debug, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ElemSymbol {
+    /// Elem::Unit
     Unit,
+
+    /// Elem::Bool
     Bool,
+
+    /// Elem::Number
     Number,
+
+    /// Elem::Bytes
     Bytes,
+
+    /// Elem::String
     String,
+
+    /// Elem::Array
     Array,
+
+    /// Elem::Object
     Object,
+
+    /// Elem::Json
     Json,
 }
 
@@ -90,6 +122,10 @@ impl Arbitrary for ElemSymbol {
 }
 
 impl ElemSymbol {
+    /// Given a Gen, use this ElemSymbol as a template of an Elem, and fill it
+    /// with Arbitrary contents.
+    ///
+    /// x.arbitrary_contents(g1).symbol() == x.arbitrary_contents(g2).symbol()
     pub fn arbitrary_contents(&self, g: &mut Gen) -> Elem {
         match self {
             Self::Unit => Elem::Unit,
@@ -207,10 +243,12 @@ mod elem_symbol_tests {
 }
 
 impl Elem {
+    /// ElemSymbol of this Elem
     pub fn symbol(&self) -> ElemSymbol {
       From::from(self)
     }
 
+    /// ElemSymbol String
     pub fn symbol_str(&self) -> &'static str {
       From::from(self.symbol())
     }
