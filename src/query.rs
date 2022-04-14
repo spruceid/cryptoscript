@@ -2,16 +2,16 @@ use crate::json_template::{TValue, TValueRunError};
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc};
+use std::sync::Arc;
 
-use reqwest::{Client};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 use tokio_stream::{self as stream, StreamExt};
 
 /// HTTP request type
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QueryType {
     /// GET request
     Get,
@@ -23,10 +23,19 @@ pub enum QueryType {
 /// This struct is deserialized from an input file by the CLI.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueryTemplate {
+    /// Query name, used for caching, display, and is exposed in the result
     pub name: String,
+
+    /// Query URL
     pub url: String,
+
+    /// Query JSON template
     pub template: TValue,
+
+    /// Whether the result should be cached
     pub cached: bool,
+
+    /// HTTP request type
     pub query_type: QueryType,
 }
 
@@ -91,10 +100,12 @@ impl From<serde_json::Error> for QueryError {
 }
 
 impl QueryTemplate {
+    /// Convert to a Value
     pub fn to_json(&self) -> Result<Value, QueryError> {
         Ok(serde_json::to_value(self)?)
     }
 
+    /// Convert to a Query with the given variables, cache_location, resp.
     pub fn to_query(self, variables: Arc<Map<String, Value>>, cache_location: Arc<PathBuf>) -> Query {
         Query {
             query_template: self,
@@ -217,10 +228,12 @@ pub struct QueryTemplates {
 }
 
 impl QueryTemplates {
+    /// Number of queries
     pub fn len(&self) -> usize {
         self.queries.len()
     }
 
+    /// Run a list of QueryTemplate's, in series, and collect their results
     pub async fn run(self, variables: Arc<Map<String, Value>>, cache_location: Arc<PathBuf>) -> Result<Vec<Map<String, Value>>, QueryError> {
         let mut result = Vec::with_capacity(self.queries.len());
         let mut stream = stream::iter(self.queries);

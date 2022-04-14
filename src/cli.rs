@@ -1,9 +1,9 @@
-use crate::elem_type::{StackType};
-use crate::stack::{Stack};
-use crate::types_scratch::{ElemsPopError};
-use crate::untyped_instruction::{InstructionError};
-use crate::typed_instruction::{StackInstructionError};
-use crate::typed_instrs::{Instrs};
+use crate::elem_type::StackType;
+use crate::stack::Stack;
+use crate::types_scratch::ElemsPopError;
+use crate::untyped_instruction::InstructionError;
+use crate::typed_instruction::StackInstructionError;
+use crate::typed_instrs::Instrs;
 use crate::parse::{parse_json, ParseError};
 use crate::query::{QueryError, QueryTemplates};
 
@@ -20,7 +20,7 @@ use thiserror::Error;
 ///
 /// Runs the given code (parsed as JSON) on the given input (parsed as JSON)
 /// and the queries (parsed as JSON into a template
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
 pub struct Cli {
     /// QueryTemplates to run
@@ -49,7 +49,7 @@ pub struct Cli {
 }
 
 /// Command line interface subcommands (optional)
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Commands {
     /// Parse only
     Parse,

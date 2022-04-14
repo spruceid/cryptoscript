@@ -1,18 +1,18 @@
-use crate::restack::{RestackError};
+use crate::restack::RestackError;
 use crate::elem::{Elem, ElemSymbol};
 use crate::elem_type::{ElemType, ElemTypeError, StackType};
-use crate::an_elem::{AnElem};
+use crate::an_elem::AnElem;
 use crate::stack::{Stack, StackError};
 use crate::types::{Context, ContextError, Type, Nil};
 
 use std::marker::PhantomData;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Formatter};
 use std::sync::{Arc, Mutex};
 
 use enumset::EnumSet;
 use generic_array::functional::FunctionalSequence;
 use generic_array::sequence::GenericSequence;
-use generic_array::typenum::{U0};
+use generic_array::typenum::U0;
 use generic_array::{GenericArray, GenericArrayIter, ArrayLength};
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
@@ -233,6 +233,21 @@ where
     Right(<U as IntoIterator>::IntoIter),
 }
 
+impl<T, N, U> Debug for IterOr<T, N, U>
+where
+    T: AnElem,
+    N: ArrayLength<T> + Debug,
+    U: Elems<N = N>,
+    <U as IntoIterator>::IntoIter: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::Left(x) => write!(f, "IterOr::Left({:?})", x),
+            Self::Right(x) => write!(f, "IterOr::Right({:?})", x),
+        }
+    }
+}
+
 impl<T, N, U> Iterator for IterOr<T, N, U>
 where
     T: AnElem,
@@ -327,6 +342,7 @@ where
 {}
 
 // TODO: AnElem: &self -> AllElems<U1>
+/// All possible Elem types, encoded using Or and Singleton.
 pub type AllElems<N> =
     Or<(), N,
     Or<bool, N,
@@ -337,7 +353,7 @@ pub type AllElems<N> =
     Or<Map<String, Value>, N,
     Singleton<Value, N>>>>>>>>;
 
-pub fn all_elems_untyped<N>(x: &AllElems<N>) -> GenericArray<Elem, N>
+impl<N> AllElems<N>
 where
     N: Debug +
     ArrayLength<()> +
@@ -350,37 +366,35 @@ where
     ArrayLength<Value> +
     ArrayLength<Elem>,
 {
-    match x {
-        Or::Left(array) => {
-            array.map(|_x| Elem::Unit)
-        },
-        Or::Right(Or::Left(array)) => {
-            array.map(|&x| Elem::Bool(x))
-        },
-        Or::Right(Or::Right(Or::Left(array))) => {
-            array.map(|x| Elem::Number(x.clone()))
-        },
-        Or::Right(Or::Right(Or::Right(Or::Left(array)))) => {
-            array.map(|x| Elem::Bytes(x.clone()))
-        },
-        Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))) => {
-            array.map(|x| Elem::String(x.clone()))
-        },
-        Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array)))))) => {
-            array.map(|x| Elem::Array(x.clone()))
-        },
-        Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))))) => {
-            array.map(|x| Elem::Object(x.clone()))
-        },
-        Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Singleton { array }))))))) => {
-            array.map(|x| Elem::Json(x.clone()))
-        },
+    pub fn all_elems_untyped(&self) -> GenericArray<Elem, N> {
+        match self {
+            Or::Left(array) => {
+                array.map(|_x| Elem::Unit)
+            },
+            Or::Right(Or::Left(array)) => {
+                array.map(|&x| Elem::Bool(x))
+            },
+            Or::Right(Or::Right(Or::Left(array))) => {
+                array.map(|x| Elem::Number(x.clone()))
+            },
+            Or::Right(Or::Right(Or::Right(Or::Left(array)))) => {
+                array.map(|x| Elem::Bytes(x.clone()))
+            },
+            Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))) => {
+                array.map(|x| Elem::String(x.clone()))
+            },
+            Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array)))))) => {
+                array.map(|x| Elem::Array(x.clone()))
+            },
+            Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))))) => {
+                array.map(|x| Elem::Object(x.clone()))
+            },
+            Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Singleton { array }))))))) => {
+                array.map(|x| Elem::Json(x.clone()))
+            },
+        }
     }
 }
-
-
-
-
 
 
 #[derive(Clone, Debug)]
@@ -683,6 +697,18 @@ pub struct IterCons<T: Elems, U: IsList> {
     tl: <U as IntoIterator>::IntoIter,
 }
 
+impl<T, U> Debug for IterCons<T, U>
+where
+    T: Elems,
+    U: IsList,
+    <T as IntoIterator>::IntoIter: Debug,
+    <U as IntoIterator>::IntoIter: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Cons {{\n  hd: {:?},\n  tl: {:?}\n}}", self.hd, self.tl)
+    }
+}
+
 impl<T: Elems, U: IsList> IntoIterator for Cons<T, U> {
     type Item = Elem;
     type IntoIter = IterCons<T, U>;
@@ -757,11 +783,15 @@ where
 {
 }
 
-
+/// Input-output type of an instruction
 pub trait IOList: IsList {
+    /// Returned IOElems
     type Return: IOElems;
 
+    /// Returned value, if set
     fn returning(&self) -> Option<Elem>;
+
+    /// IOList's define a complete input/output Type, with exacly one return value
     fn type_of(t: PhantomData<Self>) -> Result<Type, ElemsPopError>;
 }
 

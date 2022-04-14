@@ -1,6 +1,6 @@
 use crate::restack::{Restack, RestackError};
-use crate::location::{LineNo};
-use crate::elem::{Elem};
+use crate::location::LineNo;
+use crate::elem::Elem;
 use crate::elem_type::{ElemType, ElemTypeError, StackType};
 
 use std::cmp;
@@ -612,7 +612,7 @@ impl Type {
 // [ti, tj, .., tk]
 // ```
 impl Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         // TODO: fix normalize
         // let self_normalized = self.normalize().map_err(|_| fmt::Error)?;
         let self_normalized = self;

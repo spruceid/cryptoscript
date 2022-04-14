@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use crate::elem::{Elem, ElemSymbol};
-use crate::restack::{Restack};
+use crate::restack::Restack;
 
 use std::fmt::Debug;
 
@@ -28,7 +28,7 @@ pub enum Instruction {
     StringToBytes,
 }
 
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Copy, Debug, Error)]
 pub enum InstructionError {
     #[error("Instruction::to_instr UnpackJson does not support: {elem_symbol:?}")]
     UnpackJson {

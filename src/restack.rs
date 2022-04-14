@@ -156,7 +156,7 @@ impl Restack {
 }
 
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Copy, Debug, PartialEq, Error)]
 pub enum RestackError {
     #[error("invalid Restack: restack_index = {restack_index:?} out of bounds for restack_depth = {restack_depth:?}")]
     StackIndexInvalid {

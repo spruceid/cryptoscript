@@ -1,4 +1,4 @@
-use crate::location::{Location};
+use crate::location::Location;
 use crate::elem::{Elem, ElemSymbol};
 
 use thiserror::Error;
@@ -7,7 +7,7 @@ use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter::{FromIterator, IntoIterator};
 
-use enumset::{EnumSet};
+use enumset::EnumSet;
 use serde::{Deserialize, Serialize};
 
 
@@ -191,7 +191,7 @@ impl<T> Display for DebugAsDisplay<T>
 where
     T: Display,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{}", self.t)
     }
 }
@@ -200,7 +200,7 @@ impl<T> Debug for DebugAsDisplay<T>
 where
     T: Display,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "{}", self.t)
     }
 }
@@ -255,7 +255,7 @@ impl StackType {
 // Uses DebugAsDisplay to eliminate '"' around strings:
 // ["{Number}", "{Array, Object}"] -> [{Number}, {Array, Object}]
 impl Display for StackType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         f.debug_list()
             .entries(self.types
                      .iter()

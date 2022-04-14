@@ -1,11 +1,11 @@
-use std::fmt;
-use std::sync::{Arc};
+use std::fmt::{self, Formatter};
+use std::sync::Arc;
 use std::marker::PhantomData;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Visitor, MapAccess};
 
-use indexmap::{IndexMap};
+use indexmap::IndexMap;
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
@@ -62,7 +62,7 @@ where
     type Value = TMap<T>;
 
     // Format a message stating what data this Visitor expects to receive.
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         // TODO: extend description
         formatter.write_str("TMap")
     }

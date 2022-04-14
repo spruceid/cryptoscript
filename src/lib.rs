@@ -1,7 +1,11 @@
-#![warn(missing_docs)]
+#![warn(missing_docs, elided_lifetimes_in_paths, explicit_outlives_requirements, keyword_idents, missing_copy_implementations, missing_debug_implementations, non_ascii_idents, noop_method_call, single_use_lifetimes, trivial_casts, trivial_numeric_casts, unreachable_pub, unused_crate_dependencies, unused_extern_crates, unused_import_braces, unused_lifetimes, unused_qualifications)]
+
+// #![warn(unused_results)]
+
+#![deny(unsafe_code, unsafe_op_in_unsafe_fn)]
 
 mod restack;
-pub use restack::Restack;
+pub use restack::{Restack, StackIx};
 mod arbitrary;
 pub use arbitrary::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
 mod elem;
@@ -11,23 +15,24 @@ pub use elem_type::{ElemType, StackType};
 mod an_elem;
 pub use an_elem::{AnElem, AnElemError};
 mod location;
-pub use location::{LineNo};
+pub use location::{ArgumentIndex, LineNo};
 mod stack;
 pub use stack::{Stack, StackError};
 mod types;
 mod types_scratch;
+pub use types_scratch::{AllElems, IOList};
 mod json_template;
 pub use json_template::{TMap, TValue, TValueRunError, Template};
 mod query;
-pub use query::{Query, QueryType, QueryError};
+pub use query::{QueryTemplate, QueryTemplates, Query, QueryType, QueryError};
 mod untyped_instruction;
-pub use untyped_instruction::{Instruction};
+pub use untyped_instruction::Instruction;
 mod untyped_instructions;
-pub use untyped_instructions::{Instructions};
+pub use untyped_instructions::Instructions;
 mod typed_instruction;
-pub use typed_instruction::{IsInstructionT};
+pub use typed_instruction::IsInstructionT;
 mod typed_instructions;
-pub use typed_instructions::{AssertTrue, Push, Lookup, UnpackJson, Index, CheckEq, StringEq};
+pub use typed_instructions::{AssertTrue, Concat, Push, Lookup, UnpackJson, Index, CheckEq, BytesEq, StringEq, CheckLe, CheckLt, StringToBytes, ToJson, Slice, HashSha256};
 mod typed_instr;
 pub use typed_instr::Instr;
 mod typed_instrs;

@@ -1,8 +1,8 @@
 use crate::elem::{Elem, ElemSymbol};
-use crate::an_elem::{AnElem};
+use crate::an_elem::AnElem;
 use crate::types::{Empty, Nil};
-use crate::types_scratch::{AllElems, all_elems_untyped, Singleton, Cons, ReturnSingleton, ConsOut, Or, ReturnOr, IsList};
-use crate::untyped_instruction::{Instruction};
+use crate::types_scratch::{AllElems, Singleton, Cons, ReturnSingleton, ConsOut, Or, ReturnOr, IsList};
+use crate::untyped_instruction::Instruction;
 use crate::typed_instruction::{IsInstructionT, StackInstructionError};
 
 use std::cmp;
@@ -377,7 +377,7 @@ impl IsInstructionT for ToJson {
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
-        let array = all_elems_untyped(y);
+        let array = y.all_elems_untyped();
         let z = array[0].clone();
         returning.returning(serde_json::to_value(z.clone())
                             .map_err(move |e| ToJsonError {
@@ -617,7 +617,7 @@ impl IsInstructionT for CheckLe {
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
-        let array = all_elems_untyped(y);
+        let array = y.all_elems_untyped();
         let lhs = array[0].clone();
         let rhs = array[1].clone();
         let cmp_result = lhs.partial_cmp(&rhs)
@@ -664,7 +664,7 @@ impl IsInstructionT for CheckLt {
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
-        let array = all_elems_untyped(y);
+        let array = y.all_elems_untyped();
         let lhs = array[0].clone();
         let rhs = array[1].clone();
         let cmp_result = lhs.partial_cmp(&rhs)
@@ -711,7 +711,7 @@ impl IsInstructionT for CheckEq {
     fn run(&self, x: &Self::IO) -> Result<(), Self::Error> {
         let returning = x.clone().hd().returning;
         let y = &x.clone().tl().hd();
-        let array = all_elems_untyped(y);
+        let array = y.all_elems_untyped();
         let lhs = array[0].clone();
         let rhs = array[1].clone();
         let cmp_result = lhs.partial_cmp(&rhs)

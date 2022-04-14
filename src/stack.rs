@@ -1,13 +1,13 @@
 use crate::elem::{Elem, ElemSymbol};
-use crate::elem_type::{StackType};
+use crate::elem_type::StackType;
 use crate::an_elem::{AnElem, AnElemError};
-use crate::location::{LineNo};
+use crate::location::LineNo;
 
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 
-use enumset::{EnumSet};
+use enumset::EnumSet;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use generic_array::{GenericArray, ArrayLength};

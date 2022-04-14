@@ -1,13 +1,13 @@
-use crate::elem::{ElemSymbol};
+use crate::elem::ElemSymbol;
 use crate::elem_type::{ElemType, StackType};
-use crate::stack::{Stack};
-use crate::restack::{Restack};
-use crate::types_scratch::{ElemsPopError};
+use crate::stack::Stack;
+use crate::restack::Restack;
+use crate::types_scratch::ElemsPopError;
 use crate::typed_instruction::{IsStackInstruction, StackInstructionError};
-use crate::typed_instr::{Instr};
+use crate::typed_instr::Instr;
 
 use std::fmt::Debug;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use enumset::EnumSet;
 

@@ -1,14 +1,14 @@
-use crate::elem::{ElemSymbol};
-use crate::stack::{Stack};
-use crate::restack::{RestackError};
+use crate::elem::ElemSymbol;
+use crate::stack::Stack;
+use crate::restack::RestackError;
 use crate::types::{Type, TypeError};
-use crate::types_scratch::{ElemsPopError};
+use crate::types_scratch::ElemsPopError;
 use crate::types_scratch::{IOList, IsList};
-use crate::untyped_instruction::{Instruction};
+use crate::untyped_instruction::Instruction;
 
 use std::marker::PhantomData;
 use std::fmt::Debug;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use thiserror::Error;
 

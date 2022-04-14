@@ -1,5 +1,5 @@
-use crate::elem::{ElemSymbol};
-use crate::restack::{Restack};
+use crate::elem::ElemSymbol;
+use crate::restack::Restack;
 use crate::untyped_instruction::{Instruction, InstructionError};
 use crate::typed_instruction::{IsStackInstruction, StackInstructionError};
 use crate::typed_instructions::{AssertTrue, Lookup, Concat, Slice, Push,
