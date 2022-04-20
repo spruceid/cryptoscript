@@ -1,115 +1,31 @@
-use crate::restack::RestackError;
-use crate::elem::{Elem, ElemSymbol};
-use crate::elem_type::{ElemType, ElemTypeError, StackType};
+use crate::elem::Elem;
+use crate::elem_type::{ElemType, StackType};
 use crate::an_elem::AnElem;
-use crate::stack::{Stack, StackError};
-use crate::types::{Context, ContextError, Type, Nil};
+use crate::stack::Stack;
+use crate::types::{Context, Type, Nil};
+use crate::elems_singleton::Singleton;
+use crate::elems_or::Or;
+use crate::elems::{Elems, ElemsPopError};
 
 use std::marker::PhantomData;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::{Arc, Mutex};
 
-use enumset::EnumSet;
-use generic_array::functional::FunctionalSequence;
 use generic_array::sequence::GenericSequence;
 use generic_array::typenum::U0;
-use generic_array::{GenericArray, GenericArrayIter, ArrayLength};
-use serde_json::{Map, Number, Value};
-use thiserror::Error;
+use generic_array::{GenericArray, ArrayLength};
 use typenum::marker_traits::Unsigned;
 
-// TODO:
-// - random type -> ~random inhabitant of the type
-// - random typed program?
+// TODO: split out
+// - IOElems
+//     + IElems
+//     + Return
+// - IOElems_singleton
+// - IOElems_or
+// - IsList
+// - IOList
+//     + IOList_cons_out
 
-// TODO: rename
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Singleton<T, N>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-{
-    pub array: GenericArray<T, N>,
-}
-
-impl<T, N> IntoIterator for Singleton<T, N>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-{
-    type Item = Elem;
-    type IntoIter = std::iter::Map<GenericArrayIter<T, N>, fn(T) -> Elem>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.array.into_iter().map(AnElem::to_elem)
-    }
-}
-
-#[derive(Clone, Debug, Error)]
-pub enum ElemsPopError {
-    #[error("Elems::pop singleton: tried to pop an Elem that was not found:\nelem_symbol:\n{elem_symbol:?}\n\n{error}")]
-    PopSingleton {
-        elem_symbol: EnumSet<ElemSymbol>,
-        error: StackError,
-    },
-
-    #[error("Elems::pop: tried to pop a set of Elem's that were not found:\n{hd_error}\n\n{tl_errors}")]
-    Pop {
-        hd_error: Arc<Self>,
-        tl_errors: Arc<Self>,
-    },
-
-    // TODO: add detail
-    #[error("Elems::pop: generic_array internal error\n\nelem_set:\n{elem_set:?}\n\nvec:\n{vec:?}\n\nsize:\n{size}")]
-    GenericArray {
-        elem_set: EnumSet<ElemSymbol>,
-        vec: Vec<Elem>,
-        size: usize,
-    },
-
-    #[error("IsList::pop (Cons, Hd): tried to pop a set of Elem's that were not found:\nstack_type:\n{stack_type}\n\nelem_set:\n{elem_set}\n\nstack_type:\n{stack_type_of}\n\nerror:\n{error}")]
-    IsListHd {
-        stack_type: StackType,
-        elem_set: ElemType,
-        stack_type_of: StackType,
-        error: Arc<Self>,
-    },
-
-    #[error("IsList::pop (Cons, Tl): tried to pop a set of Elem's that were not found:\nstack_type:\n{stack_type}\n\nstack_type_of:\n{stack_type_of}\n\nerror:\n{error}")]
-    IsListTl {
-        stack_type: StackType,
-        stack_type_of: StackType,
-        error: Arc<Self>,
-    },
-
-    #[error("Instr::run: ElemTypeError:\n{0}")]
-    RestackError(RestackError),
-
-    #[error("Elems::elem_type (Or): Set includes repeated type:\n{0}")]
-    ElemTypeError(ElemTypeError),
-
-    #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding Tl type: {0:?}")]
-    ReturnOrTl(Arc<ElemsPopError>),
-
-    #[error("<ReturnOr as IOElems>::type_of(): ContextError when adding type:\n{0}")]
-    ReturnOrContextError(ContextError),
-}
-
-pub trait Elems: Clone + Debug + IntoIterator<Item = Elem> {
-    type Hd: AnElem;
-    type N: ArrayLength<Self::Hd>;
-    type Tl: Elems<N = Self::N>;
-
-    // fn left(s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self;
-    // fn right(s: PhantomData<Self>, x: Self::Tl) -> Self;
-    fn or<T, F: Fn(&GenericArray<Self::Hd, Self::N>) -> T, G: Fn(&Self::Tl) -> T>(&self, f: F, g: G) -> T;
-
-    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
-    where
-        Self: Sized;
-
-    fn elem_type(t: PhantomData<Self>) -> Result<ElemType, ElemsPopError>;
-}
 
 pub trait IElems: Elems {}
 
@@ -155,184 +71,11 @@ pub trait IOElems: Elems {
 
 
 
-impl<T, N> Elems for Singleton<T, N>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-{
-    type Hd = T;
-    type N = N;
-    type Tl = Singleton<T, N>;
-
-    // fn left(_s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self { Singleton { t: x, } }
-    // fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self { x }
-    fn or<U, F: Fn(&GenericArray<Self::Hd, Self::N>) -> U, G: Fn(&Self::Tl) -> U>(&self, f: F, _g: G) -> U {
-        f(&self.array)
-    }
-
-    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
-    where
-        Self: Sized,
-    {
-        let vec = (0..<N as Unsigned>::to_usize()).map(|_array_ix| {
-            stack
-                .pop_elem(PhantomData::<T>)
-                .map_err(|e| ElemsPopError::PopSingleton {
-                    elem_symbol: AnElem::elem_symbol(PhantomData::<T>),
-                    error: e,
-                })
-        }).collect::<Result<Vec<T>, ElemsPopError>>()?;
-        let array = GenericArray::from_exact_iter(vec.clone()).ok_or_else(|| {
-            ElemsPopError::GenericArray {
-                elem_set: AnElem::elem_symbol(PhantomData::<T>),
-                vec: vec.into_iter().map(|x| x.to_elem()).collect(),
-                size: <N as Unsigned>::to_usize(),
-            }
-        })?;
-        Ok(Singleton {
-            array: array,
-        })
-    }
-
-    // TODO: add info
-    fn elem_type(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
-        Ok(ElemType {
-            type_set: AnElem::elem_symbol(PhantomData::<T>),
-            info: vec![],
-        })
-    }
-}
-
-
 impl<T, N> IElems for Singleton<T, N>
 where
     T: AnElem,
     N: ArrayLength<T> + Debug,
 {}
-
-
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Or<T, N, U>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-    U: Elems<N = N>,
-{
-    Left(GenericArray<T, N>),
-    Right(U),
-}
-
-pub enum IterOr<T, N, U>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-    U: Elems<N = N>,
-{
-    Left(<Singleton<T, N> as IntoIterator>::IntoIter),
-    Right(<U as IntoIterator>::IntoIter),
-}
-
-impl<T, N, U> Debug for IterOr<T, N, U>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-    U: Elems<N = N>,
-    <U as IntoIterator>::IntoIter: Debug,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::Left(x) => write!(f, "IterOr::Left({:?})", x),
-            Self::Right(x) => write!(f, "IterOr::Right({:?})", x),
-        }
-    }
-}
-
-impl<T, N, U> Iterator for IterOr<T, N, U>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-    U: Elems<N = N>,
-{
-    type Item = Elem;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::Left(x) => x.next(),
-            Self::Right(x) => x.next(),
-        }
-    }
-}
-
-impl<T, N, U> IntoIterator for Or<T, N, U>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-    U: Elems<N = N>,
-{
-    type Item = Elem;
-    type IntoIter = IterOr<T, N, U>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Self::Left(array) => IterOr::Left(
-                Singleton {
-                    array: array,
-                }.into_iter()
-            ),
-            Self::Right(xs) => IterOr::Right(xs.into_iter()),
-        }
-    }
-}
-
-impl<T, N, U> Elems for Or<T, N, U>
-where
-    T: AnElem,
-    N: ArrayLength<T> + Debug,
-    U: Elems<N = N>,
-{
-    type Hd = T;
-    type N = N;
-    type Tl = U;
-
-    // fn left(_s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self { Self::Left(x) }
-    // fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self { Self::Right(x) }
-    fn or<V, F: Fn(&GenericArray<Self::Hd, Self::N>) -> V, G: Fn(&Self::Tl) -> V>(&self, f: F, g: G) -> V {
-        match self {
-            Self::Left(x) => f(x),
-            Self::Right(x) => g(x),
-        }
-    }
-
-    fn pop(_x: PhantomData<Self>, stack: &mut Stack) -> Result<Self, ElemsPopError>
-    where
-        Self: Sized,
-    {
-        match <Singleton<T, N> as Elems>::pop(PhantomData, stack) {
-            Ok(Singleton { array }) => Ok(Self::Left(array)),
-            Err(hd_error) => {
-                Elems::pop(PhantomData::<U>, stack)
-                    .map(|x| Self::Right(x))
-                    .map_err(|tl_errors| {
-                        ElemsPopError::Pop {
-                            hd_error: Arc::new(hd_error),
-                            tl_errors: Arc::new(tl_errors),
-                        }
-                    })
-            },
-        }
-    }
-
-    // TODO: add info
-    fn elem_type(_t: PhantomData<Self>) -> Result<ElemType, ElemsPopError> {
-        let elem_type_hd = ElemType {
-            type_set: AnElem::elem_symbol(PhantomData::<T>),
-            info: vec![],
-        };
-        let elem_type_tl = Elems::elem_type(PhantomData::<U>)?;
-        Ok(elem_type_hd.union(elem_type_tl))
-    }
-}
 
 impl<T, N, U> IElems for Or<T, N, U>
 where
@@ -340,61 +83,6 @@ where
     N: ArrayLength<T> + Debug,
     U: IElems<N = N>,
 {}
-
-// TODO: AnElem: &self -> AllElems<U1>
-/// All possible Elem types, encoded using Or and Singleton.
-pub type AllElems<N> =
-    Or<(), N,
-    Or<bool, N,
-    Or<Number, N,
-    Or<Vec<u8>, N,
-    Or<String, N,
-    Or<Vec<Value>, N,
-    Or<Map<String, Value>, N,
-    Singleton<Value, N>>>>>>>>;
-
-impl<N> AllElems<N>
-where
-    N: Debug +
-    ArrayLength<()> +
-    ArrayLength<bool> +
-    ArrayLength<Number> +
-    ArrayLength<Vec<u8>> +
-    ArrayLength<String> +
-    ArrayLength<Vec<Value>> +
-    ArrayLength<Map<String, Value>> +
-    ArrayLength<Value> +
-    ArrayLength<Elem>,
-{
-    pub fn all_elems_untyped(&self) -> GenericArray<Elem, N> {
-        match self {
-            Or::Left(array) => {
-                array.map(|_x| Elem::Unit)
-            },
-            Or::Right(Or::Left(array)) => {
-                array.map(|&x| Elem::Bool(x))
-            },
-            Or::Right(Or::Right(Or::Left(array))) => {
-                array.map(|x| Elem::Number(x.clone()))
-            },
-            Or::Right(Or::Right(Or::Right(Or::Left(array)))) => {
-                array.map(|x| Elem::Bytes(x.clone()))
-            },
-            Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))) => {
-                array.map(|x| Elem::String(x.clone()))
-            },
-            Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array)))))) => {
-                array.map(|x| Elem::Array(x.clone()))
-            },
-            Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Left(array))))))) => {
-                array.map(|x| Elem::Object(x.clone()))
-            },
-            Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Or::Right(Singleton { array }))))))) => {
-                array.map(|x| Elem::Json(x.clone()))
-            },
-        }
-    }
-}
 
 
 #[derive(Clone, Debug)]
@@ -769,7 +457,7 @@ impl<T: Elems, U: IsList> IsList for Cons<T, U> {
 
 
 
-
+/// IsList and defines inputs, but no outputs. See IOList for more info
 pub trait IList: IsList {
 }
 

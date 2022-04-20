@@ -1,6 +1,6 @@
 use crate::elem_type::StackType;
 use crate::stack::Stack;
-use crate::types_scratch::ElemsPopError;
+use crate::elems::ElemsPopError;
 use crate::untyped_instruction::InstructionError;
 use crate::typed_instruction::StackInstructionError;
 use crate::typed_instrs::Instrs;

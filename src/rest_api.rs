@@ -52,7 +52,7 @@ impl Api {
 
     /// Update last_api_call
     pub fn called_now(&self) -> Self {
-        Api {
+        Self {
             request: self.request.clone(),
             response: self.response.clone(),
             rate_limit_seconds: self.rate_limit_seconds,
@@ -68,6 +68,10 @@ struct AppState {
 }
 
 impl AppState {
+    // NOTE: unclear why this non-dead code is detected as dead,
+    // perhaps because it's inside #[actix_web::main]?
+    #[allow(dead_code)]
+    /// New AppState with empty set of apis
     fn new() -> Self {
         Self {
             apis: Arc::new(Mutex::new(IndexMap::new())),

@@ -2,7 +2,7 @@ use crate::elem::ElemSymbol;
 use crate::stack::Stack;
 use crate::restack::RestackError;
 use crate::types::{Type, TypeError};
-use crate::types_scratch::ElemsPopError;
+use crate::elems::ElemsPopError;
 use crate::types_scratch::{IOList, IsList};
 use crate::untyped_instruction::Instruction;
 

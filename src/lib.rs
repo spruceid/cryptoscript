@@ -1,5 +1,10 @@
-#![warn(missing_docs, elided_lifetimes_in_paths, explicit_outlives_requirements, keyword_idents, missing_copy_implementations, missing_debug_implementations, non_ascii_idents, noop_method_call, single_use_lifetimes, trivial_casts, trivial_numeric_casts, unreachable_pub, unused_crate_dependencies, unused_extern_crates, unused_import_braces, unused_lifetimes, unused_qualifications)]
 
+//! Cryptoscript Rust Library
+//! See cli for the command line interface
+
+#![warn(missing_docs, elided_lifetimes_in_paths, explicit_outlives_requirements, keyword_idents, missing_copy_implementations, missing_debug_implementations, non_ascii_idents, noop_method_call, single_use_lifetimes, trivial_casts, trivial_numeric_casts, unreachable_pub, unused_extern_crates, unused_import_braces, unused_lifetimes, unused_qualifications)]
+
+// #![warn(unused_crate_dependencies)]
 // #![warn(unused_results)]
 
 #![deny(unsafe_code, unsafe_op_in_unsafe_fn)]
@@ -19,8 +24,16 @@ pub use location::{ArgumentIndex, LineNo};
 mod stack;
 pub use stack::{Stack, StackError};
 mod types;
+mod elems;
+pub use elems::{Elems, ElemsPopError};
+mod elems_singleton;
+pub use elems_singleton::Singleton;
+mod elems_or;
+pub use elems_or::Or;
+mod elems_all;
+pub use elems_all::AllElems;
 mod types_scratch;
-pub use types_scratch::{AllElems, IOList};
+pub use types_scratch::{IList, IOList};
 mod json_template;
 pub use json_template::{TMap, TValue, TValueRunError, Template};
 mod query;
