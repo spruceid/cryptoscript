@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use generic_array::{GenericArray, ArrayLength};
 
-
 /// Either AnElem with type T an multiplicity N or Elems U, i.e.
 /// Or is equivalent to Result<Singleton<T, N>, U> with constraints
 #[derive(Clone, Debug, PartialEq, Eq)]

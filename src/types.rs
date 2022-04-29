@@ -1,156 +1,20 @@
+pub(crate) mod empty;
+
+pub(crate) mod type_id;
+use type_id::TypeId;
+use type_id::map::TypeIdMapError;
+
+pub(crate) mod context;
+use context::{Context, ContextError};
+
 use crate::restack::{Restack, RestackError};
 use crate::location::LineNo;
-use crate::elem::Elem;
-use crate::elem_type::{ElemType, ElemTypeError, StackType};
+use crate::elem_type::{ElemType, StackType};
 
-use std::cmp;
-use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fmt;
-use std::marker::PhantomData;
-use std::sync::Arc;
 
 use thiserror::Error;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
-pub enum Empty {}
-
-impl Empty {
-    pub fn absurd<T>(&self, _p: PhantomData<T>) -> T {
-        match *self {}
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Nil {}
-
-impl Iterator for Nil {
-    type Item = Elem;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        None
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////////////////
-//////////////////////////////
-////////////////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////////////////
-////////////////////////
-//////////////////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-////////////
-//////////////////
-////////////
-//////
-////////////
-//////
-
 
 // typing:
 // - unification
@@ -160,273 +24,22 @@ impl Iterator for Nil {
 //   + property tests for typing methods themselves
 //   + test that a function having a particular type -> it runs w/o type errors on such inputs
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TypeId {
-    type_id: usize,
-}
-
-
-impl Display for TypeId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-       write!(f, "type#{}", self.type_id)
-    }
-}
-
-impl TypeId {
-    // TODO: test by checking:
-    // xs.map(TypeId).fold(x, offset) = TypeId(xs.fold(x, +))
-    pub fn offset(&self, offset: TypeId) -> Self {
-        TypeId {
-            type_id: self.type_id + offset.type_id,
-        }
-    }
-
-    pub fn update_type_id(&self, from: Self, to: Self) -> Self {
-        if *self == from {
-            to
-        } else {
-            *self
-        }
-    }
-}
-
-// TODO: relocate
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Context {
-    context: BTreeMap<TypeId, ElemType>,
-    next_type_id: TypeId,
-}
-
-
-// Formatting:
-// ```
-// Context {
-//     context: [
-//         (t0, {A, B, C}),
-//         (t1, {B, C}),
-//         ..
-//         (tN, {D, E, F})],
-//     next_type_id: N+1,
-// }
-// ```
-//
-// Results in:
-// ```
-// ∀ (t0 ∊ {A, B, C}),
-// ∀ (t1 ∊ {B, C}),
-// ..
-// ∀ (tN ∊ {D, E, F}),
-// ```
-impl Display for Context {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-       write!(f,
-              "{}",
-              self.context.iter()
-              .fold(String::new(), |memo, (i, xs)| {
-                memo +
-                "\n" +
-                &format!("∀ (t{i} ∊ {xs}),", i = i.type_id, xs = xs).to_string()
-              }))
-    }
-}
-
-#[cfg(test)]
-mod context_display_tests {
-    use super::*;
-
-    #[test]
-    fn test_empty() {
-        let big_type_id = TypeId {
-            type_id: 2^32
-        };
-        let context = Context {
-            context: BTreeMap::new(),
-            next_type_id: big_type_id,
-        };
-        assert_eq!("", format!("{}", context));
-    }
-
-    #[test]
-    fn test_singleton() {
-        for elem_symbol in EnumSet::all().iter() {
-            let elem_type = ElemType {
-                type_set: EnumSet::only(elem_symbol),
-                info: vec![],
-            };
-            let mut context_map = BTreeMap::new();
-            context_map.insert(TypeId { type_id: 0 }, elem_type.clone());
-            let context = Context {
-                context: context_map,
-                next_type_id: TypeId {
-                    type_id: 1,
-                },
-            };
-            assert_eq!(format!("\n∀ (t0 ∊ {}),", elem_type), format!("{}", context));
-        }
-    }
-}
-
-impl Context {
-    pub fn new() -> Self {
-        Context {
-            context: BTreeMap::new(),
-            next_type_id: TypeId {
-                type_id: 0,
-            },
-        }
-    }
-
-    pub fn is_valid(&self) -> bool {
-        !self.context.keys().any(|x| *x >= self.next_type_id)
-    }
-
-    pub fn size(&self) -> usize {
-        self.context.len()
-    }
-
-    pub fn push(&mut self, elem_type: ElemType) -> TypeId {
-        let push_id = self.next_type_id;
-        self.context.insert(push_id, elem_type);
-        self.next_type_id = TypeId {
-            type_id: push_id.type_id + 1,
-        };
-        push_id
-    }
-
-    // NormalizeOnInvalidBasis is possible iff a `TypeId` in (basis) is repeated
-    // or missing from (self)
-    pub fn normalize_on(&self, basis: Vec<TypeId>) -> Result<(Self, TypeIdMap), ContextError> {
-        let mut source = self.clone();
-        let mut result = Self::new();
-        let mut type_map = TypeIdMap::new();
-        for &type_id in &basis {
-            match source.context.remove(&type_id) {
-                None => Err(ContextError::NormalizeOnInvalidBasis {
-                    type_id: type_id,
-                    context: self.clone(),
-                    basis: basis.clone().into_iter().collect(),
-                }),
-                Some(elem_type) => {
-                    let new_type_id = result.next_type_id;
-                    result.push(elem_type);
-                    type_map.push(type_id, new_type_id)?;
-                    Ok(())
-                },
-            }?
-        }
-        Ok((result, type_map))
-    }
-
-    pub fn offset(&self, offset: TypeId) -> Self {
-        Context {
-            context: self.context.iter().map(|(k, x)| (k.offset(offset), x.clone())).collect(),
-            next_type_id: self.next_type_id.offset(offset),
-        }
-    }
-
-    pub fn update_type_id(&mut self, from: TypeId, to: TypeId) -> Result<(), ContextError> {
-        if self.context.contains_key(&from) {
-            Ok(())
-        } else {
-            Err(ContextError::UpdateTypeIdFromMissing {
-                from: from,
-                to: to,
-                context: self.clone(),
-            })
-        }?;
-        if self.context.contains_key(&to) {
-            Err(ContextError::UpdateTypeIdToPresent {
-                from: from,
-                to: to,
-                context: self.clone(),
-            })
-        } else {
-            Ok(())
-        }?;
-        self.context = self.context.iter().map(|(k, x)| (k.update_type_id(from, to), x.clone())).collect();
-        self.next_type_id = cmp::max(self.next_type_id, to);
-        Ok(())
-    }
-
-    pub fn disjoint_union(&mut self, other: Self) -> Result<(), ContextError> {
-        for (&type_id, elem_type) in other.context.iter() {
-            match self.context.insert(type_id, elem_type.clone()) {
-                None => {
-                    Ok(())
-                },
-                Some(conflicting_elem_type) => Err(ContextError::DisjointUnion {
-                    type_id: type_id,
-                    elem_type: elem_type.clone(),
-                    conflicting_elem_type: conflicting_elem_type,
-                    lhs: self.clone(),
-                    rhs: other.clone(),
-                }),
-            }?
-        }
-        self.next_type_id = cmp::max(self.next_type_id, other.next_type_id);
-        Ok(())
-    }
-
-    pub fn get(&mut self, index: &TypeId, error: &dyn Fn() -> ContextError) -> Result<ElemType, ContextError> {
-        Ok(self.context.get(index).ok_or_else(|| ContextError::GetUnknownTypeId {
-            context: self.clone(),
-            index: *index,
-            error: Arc::new(error()),
-        })?.clone())
-    }
-
-    // unify the types of two TypeId's into the rhs
-    // removing the lhs
-    pub fn unify(&mut self, xi: TypeId, yi: TypeId) -> Result<(), ContextError> {
-        let x_type = self.context.remove(&xi).ok_or_else(|| ContextError::Unify {
-            xs: self.clone(),
-            xi: xi.clone(),
-            yi: yi.clone(),
-            is_lhs: true,
-        })?;
-        let y_type = self.context.remove(&yi).ok_or_else(|| ContextError::Unify {
-            xs: self.clone(),
-            xi: xi.clone(),
-            yi: yi.clone(),
-            is_lhs: false,
-        })?;
-        let xy_type = x_type.unify(y_type).or_else(|e| Err(ContextError::UnifyElemType {
-            xs: self.clone(),
-            xi: xi.clone(),
-            yi: yi.clone(),
-            error: e,
-        }))?;
-        self.context.insert(yi, xy_type);
-        Ok(())
-    }
-
-    pub fn unify_elem_type(&mut self, xi: TypeId, elem_type: ElemType) -> Result<(), ContextError> {
-        let yi = self.push(elem_type);
-        self.unify(xi, yi)
-    }
-
-    // maximum possible, not maximum present
-    pub fn max_type_id(&self) -> Result<TypeId, ContextError> {
-        let type_id = self.next_type_id.type_id;
-        if type_id == 0 {
-            Err(ContextError::MaxTypeId(self.clone()))
-        } else {
-            Ok(TypeId {
-                type_id: type_id - 1,
-            })
-        }
-    }
-}
-
-
+// TODO: make fields private
+/// Type of a series of instructions
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Type {
+    /// TypeId Context, assigning ElemType's to each TypeId
     pub context: Context,
+
+    /// Input type stack (all TypeId's must be in the Context)
     pub i_type: Vec<TypeId>,
+
+    /// Output type stack (all TypeId's must be in the Context)
     pub o_type: Vec<TypeId>,
 }
 
 impl Type {
+    /// Identity Type
     pub fn id() -> Self {
         Type {
             context: Context::new(),
@@ -435,11 +48,12 @@ impl Type {
         }
     }
 
+    /// The next TypeId, guaranteed to not be present in the Context
     pub fn next_type_id(&self) -> TypeId {
         self.context.next_type_id
     }
 
-    // check whether all the TypeId's are valid
+    /// check whether all the TypeId's are valid
     pub fn is_valid(&self) -> bool {
         let next_type_id = self.next_type_id();
         self.context.is_valid() &&
@@ -447,8 +61,8 @@ impl Type {
           self.o_type.iter().any(|x| *x >= next_type_id))
     }
 
-    // equivalent to running update_type_id w/ offset from largest to smallest
-    // existing TypeId
+    /// Equivalent to running update_type_id w/ offset from largest to smallest
+    /// existing TypeId
     pub fn offset(&self, offset: TypeId) -> Self {
         Type {
             context: self.context.offset(offset),
@@ -457,6 +71,7 @@ impl Type {
         }
     }
 
+    /// Update a TypeId, failing if "from" isn't present or "to" already is
     pub fn update_type_id(&mut self, from: TypeId, to: TypeId) -> Result<(), TypeError> {
         self.context.update_type_id(from, to).map_err(|e| TypeError::UpdateTypeId(e))?;
         self.i_type = self.i_type.iter().map(|x| x.update_type_id(from, to)).collect();
@@ -464,6 +79,7 @@ impl Type {
         Ok(())
     }
 
+    /// Normalize self.context on self.i_type as a basis
     pub fn normalize(&self) -> Result<Self, TypeError> {
         let mut basis = self.i_type.clone();
         basis.append(&mut self.o_type.clone());
@@ -476,7 +92,10 @@ impl Type {
         })
     }
 
-    /// Returns output stack
+    /// Specialize self to the given StackType, or fail if it's not a valid
+    /// specialization.
+    ///
+    /// Returns the output stack
     pub fn specialize_to_input_stack(&mut self, stack_type: StackType) -> Result<StackType, TypeError> {
         if self.i_type.len() <= stack_type.len() {
             let mut stack_type_iter = stack_type.clone().into_iter();
@@ -514,20 +133,24 @@ impl Type {
         }
     }
 
-    // f : self
-    // g : other
-    // self.compose(other) : (f ++ g).type_of()
-    //
-    // input ->
-    // other.i_type
-    // other.o_type
-    // self.i_type
-    // self.o_type
-    // -> output
-    //
-    // 1. iterate through (zip(self.o_type, other.i_type)) and unify the pairs into a new context
-    // 2. collect the remainder and add them to the context
-    // 3. add the remainder to (self.i_type, other.o_type), with replaced variables
+    /// Unify two Type's by producing the type of their composition.
+    ///
+    /// ```
+    /// f : self
+    /// g : other
+    /// self.compose(other) : (f ++ g).type_of()
+    ///
+    /// input ->
+    /// other.i_type
+    /// other.o_type
+    /// self.i_type
+    /// self.o_type
+    /// -> output
+    /// ```
+    ///
+    /// 1. iterate through (zip(self.o_type, other.i_type)) and unify the pairs into a new context
+    /// 2. collect the remainder and add them to the context
+    /// 3. add the remainder to (self.i_type, other.o_type), with replaced variables
     pub fn compose(&self, other: Self) -> Result<Self, TypeError> {
         println!("");
         println!("composing:\n{0}\n\nAND\n{1}\n", self, other);
@@ -564,6 +187,7 @@ impl Type {
         })
     }
 
+    /// Prepend inputs to self.i_type
     pub fn prepend_inputs(&mut self, num_copies: usize, elem_type: ElemType) -> () {
         if 0 < num_copies {
             let type_id = self.context.push(elem_type);
@@ -574,6 +198,7 @@ impl Type {
         }
     }
 
+    /// Append inputs to self.i_type
     pub fn append_inputs<T>(&mut self, elem_types: T) -> ()
     where
         T: IntoIterator<Item = ElemType>,
@@ -620,18 +245,18 @@ impl Display for Type {
                "{context}\n[{i_type}] ->\n[{o_type}]",
                context = self_normalized.context,
                i_type = self_normalized.i_type.iter().fold(String::new(), |memo, x| {
-                   let x_str = format!("t{}", x.type_id);
+                   let x_str = x.debug();
                    if memo == "" {
                        x_str
                    } else {
-                       memo + ", " + &x_str.to_string()
+                       memo + ", " + &x_str
                    }}),
                o_type = self_normalized.o_type.iter().fold(String::new(), |memo, x| {
-                   let x_str = format!("t{}", x.type_id);
+                   let x_str = x.debug();
                    if memo == "" {
                        x_str
                    } else {
-                       memo + ", " + &x_str.to_string()
+                       memo + ", " + &x_str
                    }}))
     }
 }
@@ -639,6 +264,7 @@ impl Display for Type {
 #[cfg(test)]
 mod type_display_tests {
     use super::*;
+    use enumset::EnumSet;
 
     #[test]
     fn test_empty() {
@@ -682,177 +308,61 @@ mod type_display_tests {
     }
 }
 
-
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum ContextError {
-    #[error("Context::get applied to a TypeId: \n{index:?}\n, not in the Context: \n{context:?}\n, error: \n{error:?}\n")]
-    GetUnknownTypeId {
-        context: Context,
-        index: TypeId,
-        error: Arc<Self>,
-    },
-
-    #[error("Context::disjoint_union applied to lhs: \n{lhs:?}\n, and rhs: \n{rhs:?}\n, /
-            with type_id: \n{type_id:?}\n, and elem_type: \n{elem_type:?}\n, conflicted /
-            with lhs entry conflicting_elem_type: {conflicting_elem_type:?\n}\n")]
-    DisjointUnion {
-        type_id: TypeId,
-        elem_type: ElemType,
-        conflicting_elem_type: ElemType,
-        lhs: Context,
-        rhs: Context,
-    },
-
-    #[error("Context::normalize_on applied to invalid basis: type_id: \n{type_id:?}\n, context: \n{context:?}\n, basis: \n{basis:?}\n")]
-    NormalizeOnInvalidBasis {
-        type_id: TypeId,
-        context: Context,
-        basis: Vec<TypeId>,
-    },
-
-    #[error("Context::update_type_id called on missing 'from: TypeId':\n from: \n{from:?}\n to: {to:?}\n context: {context:?}")]
-    UpdateTypeIdFromMissing {
-        from: TypeId,
-        to: TypeId,
-        context: Context,
-    },
-
-    #[error("Context::update_type_id called on already-present 'to: TypeId':\n from: \n{from:?}\n\n to: \n{to:?}\n context: \n{context:?}\n")]
-    UpdateTypeIdToPresent {
-        from: TypeId,
-        to: TypeId,
-        context: Context,
-    },
-
-    #[error("Context::unify failed:\n xs: \n{xs:?}\n xi: \n{xi:?}\n yi: \n{yi:?}\n is_lhs: \n{is_lhs:?}\n")]
-    Unify {
-        xs: Context,
-        xi: TypeId,
-        yi: TypeId,
-        is_lhs: bool,
-    },
-
-    #[error("Context::unify failed to unify ElemType's:\n\nxs:\n{xs}\n\nxi:\n{xi}\n\nyi:\n{yi}\n\nelem_error:\n{error}\n")]
-    UnifyElemType {
-        xs: Context,
-        xi: TypeId,
-        yi: TypeId,
-        error: ElemTypeError,
-    },
-
-    #[error("Type::specialize_to_input_stack failed to resolve ElemType's:\ntype_of:\n{type_of}\n\nstack_type:\n{stack_type}")]
-    SpecializeToInputStack {
-        type_of: Type,
-        stack_type: StackType,
-    },
-
-    #[error("Context::normalize_on building TypeIdMap failed: \n{0:?}\n")]
-    TypeIdMapError(TypeIdMapError),
-
-    #[error("Context::max_type_id: next_type_id == 0: \n{0:?}\n")]
-    MaxTypeId(Context),
-}
-
-impl From<TypeIdMapError> for ContextError {
-    fn from(error: TypeIdMapError) -> Self {
-        Self::TypeIdMapError(error)
-    }
-}
-
-
+/// Type trait errors
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum TypeError {
+    /// "Specialization error:\ntype_id:\n{type_id}\n\nelem_type:\n{elem_type}\n\ncontext:\n{context}\n\nerror:\n{error}"
     #[error("Specialization error:\ntype_id:\n{type_id}\n\nelem_type:\n{elem_type}\n\ncontext:\n{context}\n\nerror:\n{error}")]
     Specialization {
+        /// ElemType with this TypeId is invalid specialization of Context
         type_id: TypeId,
+
+        /// ElemType for type_id is invalid specialization of Context
         elem_type: ElemType,
+
+        /// Context not compatible with TypeId, ElemType pair
         context: Context,
+
+        /// ContextError
         error: ContextError,
     },
 
+    /// "NormalizeContextError\n{0}"
     #[error("NormalizeContextError\n{0}")]
     NormalizeContextError(ContextError),
 
+    /// "ComposeContextError\n{0}"
     #[error("ComposeContextError\n{0}")]
     ComposeContextError(ContextError),
 
+    /// "TypeError::update_type_id failed when updating the Context:\n{0}"
     #[error("TypeError::update_type_id failed when updating the Context:\n{0}")]
     UpdateTypeId(ContextError),
 
+    /// "TypeError::compose disjoint_union\n{0}"
     #[error("TypeError::compose disjoint_union\n{0}")]
     ComposeDisjointUnion(ContextError),
 
+    /// "Type::normalize applying TypeIdMap failed:\n{0}"
     #[error("Type::normalize applying TypeIdMap failed:\n{0}")]
     TypeIdMapError(TypeIdMapError),
 
+    /// "Type::specialize_to_input_stack ContextError:\n{0}"
     #[error("Type::specialize_to_input_stack ContextError:\n{0}")]
     SpecializeToInputStackContextError(ContextError),
 
     // TODO: use StackType and Display instead of Vec
+    /// "Type::specialize_to_input_stack: stack_type shorter than expected:\n{type_of}\n{stack_type}"
     #[error("Type::specialize_to_input_stack: stack_type shorter than expected:\n{type_of}\n{stack_type}")]
     SpecializeToInputStack {
+        /// Type too long for stack_type
         type_of: Type,
+
+        /// Shorter than expected StackType
         stack_type: StackType,
     },
 }
 
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TypeIdMap {
-    map: BTreeMap<TypeId, TypeId>,
-}
-
-
-impl TypeIdMap {
-    pub fn new() -> Self {
-        TypeIdMap {
-            map: BTreeMap::new(),
-        }
-    }
-
-    pub fn push(&mut self, from: TypeId, to: TypeId) -> Result<(), TypeIdMapError> {
-        if self.map.contains_key(&from) {
-            Err(TypeIdMapError::PushExists {
-                from: from,
-                to: to,
-                map: self.clone(),
-            })
-        } else {
-            self.map.insert(from, to);
-            Ok(())
-        }
-    }
-
-    pub fn get(&self, index: &TypeId, location: usize) -> Result<&TypeId, TypeIdMapError> {
-        self.map.get(index)
-            .ok_or_else(|| TypeIdMapError::GetUnknownTypeId {
-                index: index.clone(),
-                location: location,
-                type_map: self.clone(),
-            })
-    }
-
-    pub fn run(&self, type_vars: Vec<TypeId>) -> Result<Vec<TypeId>, TypeIdMapError> {
-        type_vars.iter().enumerate().map(|(i, x)| Ok(self.get(x, i)?.clone())).collect()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Error)]
-pub enum TypeIdMapError {
-    #[error("TypeIdMap::get attempted to get a TypeId: {index:?}, not in the map: {type_map:?}; at location in TypeIdMap::run {location:?}")]
-    GetUnknownTypeId {
-        index: TypeId,
-        location: usize,
-        type_map: TypeIdMap,
-    },
-
-    #[error("TypeIdMap::push already exists: mapping from: {from:?}, to: {to:?}, in TypeIdMap {map:?}")]
-    PushExists {
-        from: TypeId,
-        to: TypeId,
-        map: TypeIdMap,
-    },
-}
 
 impl Restack {
     /// Calculate the Type of a Restack instruction

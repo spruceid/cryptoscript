@@ -3,7 +3,8 @@ use crate::stack::Stack;
 use crate::restack::RestackError;
 use crate::types::{Type, TypeError};
 use crate::elems::ElemsPopError;
-use crate::types_scratch::{IOList, IsList};
+use crate::elems_list::IsList;
+use crate::elems_list_input_output::IOList;
 use crate::untyped_instruction::Instruction;
 
 use std::marker::PhantomData;

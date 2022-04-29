@@ -3,7 +3,7 @@ use crate::elem::{Elem, ElemSymbol};
 use crate::elem_type::{ElemType, ElemTypeError, StackType};
 use crate::an_elem::AnElem;
 use crate::stack::{Stack, StackError};
-use crate::types::ContextError;
+use crate::types::context::ContextError;
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -95,8 +95,10 @@ pub enum ElemsPopError {
 pub trait Elems: Clone + Debug + IntoIterator<Item = Elem> {
     /// Head Elem
     type Hd: AnElem;
+
     /// Multiplicity of the head Elem
     type N: ArrayLength<Self::Hd>;
+
     /// Tail Elems, or Nil
     type Tl: Elems<N = Self::N>;
 

@@ -1,10 +1,15 @@
 use crate::elem::{Elem, ElemSymbol};
 use crate::an_elem::AnElem;
-use crate::types::{Empty, Nil};
+use crate::types::empty::Empty;
 use crate::elems_singleton::Singleton;
 use crate::elems_or::Or;
 use crate::elems_all::AllElems;
-use crate::types_scratch::{Cons, ReturnSingleton, ConsOut, ReturnOr, IsList};
+use crate::elems_input_output_singleton::ReturnSingleton;
+use crate::elems_input_output_or::ReturnOr;
+use crate::elems_list::IsList;
+use crate::elems_list_nil::Nil;
+use crate::elems_list_cons::Cons;
+use crate::elems_list_input_output_cons::ConsOut;
 use crate::untyped_instruction::Instruction;
 use crate::typed_instruction::{IsInstructionT, StackInstructionError};
 
