@@ -2,8 +2,9 @@
 //! Cryptoscript Rust Library
 //! See cli for the command line interface
 
-#![warn(missing_docs, elided_lifetimes_in_paths, explicit_outlives_requirements, keyword_idents, missing_copy_implementations, missing_debug_implementations, non_ascii_idents, noop_method_call, single_use_lifetimes, trivial_casts, trivial_numeric_casts, unreachable_pub, unused_extern_crates, unused_import_braces, unused_lifetimes, unused_qualifications)]
+#![warn(missing_docs, elided_lifetimes_in_paths, explicit_outlives_requirements, keyword_idents, missing_copy_implementations, missing_debug_implementations, non_ascii_idents, noop_method_call, trivial_casts, trivial_numeric_casts, unreachable_pub, unused_extern_crates, unused_import_braces, unused_lifetimes, unused_qualifications)]
 
+// single_use_lifetimes, 
 // #![warn(unused_crate_dependencies)]
 // #![warn(unused_results)]
 
@@ -79,6 +80,9 @@ mod typed_instrs;
 pub use typed_instrs::Instrs;
 mod parse;
 pub use parse::{parse, parse_json};
+
+mod parse_nom;
+pub use parse_nom::{parse_nom, SourceCode, SourceBlock, Comment, Var, Assignment, App, Expr};
 
 mod rest_api;
 pub use rest_api::Api;
