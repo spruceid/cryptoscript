@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use nom::IResult;
 use nom::branch::alt;
-use nom::bytes::complete::{is_not, tag, take_while_m_n};
-use nom::character::complete::{alpha1, alphanumeric1, char, not_line_ending, multispace0, multispace1};
+use nom::bytes::complete::{is_not, tag, take_while_m_n, take_till};
+use nom::character::complete::{alpha1, alphanumeric1, char, multispace0, multispace1};
 use nom::combinator::{map, map_opt, map_res, recognize, value, verify};
 use nom::multi::{fold_many0, many0, many0_count, separated_list1};
 use nom::sequence::{delimited, pair, preceded};
@@ -20,41 +20,64 @@ use nom::Parser;
 // var := alpha[alpha | num | '_']+
 // function := var // parsed as function contextually
 
+/// Line comments: "//comment"
 pub type Comment = String;
+
+/// Rust-style variables
 pub type Var = String;
 
+/// A parsed source file
 #[derive(Debug, Clone)]
 pub struct SourceCode {
+    /// Vec of SourceBlock's, in order
     blocks: Vec<SourceBlock>
 }
 
-#[derive(Debug, Clone)]
+/// A single block of parsed source code
+#[derive(Debug, Clone, PartialEq)]
 pub enum SourceBlock {
+    /// A line comment
     Comment(Comment),
+
+    /// An assignment, which could span multiple lines
     Assignment(Assignment),
 }
 
-#[derive(Debug, Clone)]
+/// A single assignment: assignments are "simple," i.e. no pattern matching, etc
+#[derive(Debug, Clone, PartialEq)]
 pub struct Assignment {
+    /// Assigned variable
     var: Var,
+
+    /// Expression assigned
     app: App,
 }
 
-#[derive(Debug, Clone)]
+/// An application of a function to a Vec of arguments
+#[derive(Debug, Clone, PartialEq)]
 pub struct App {
+    /// The function variable: "f" in "f(1, 2, 3)"
     function: Var,
+
+    /// The argument expressions: "[1, 2, 3]" in "f(1, 2, 3)"
     args: Vec<Expr>,
 }
 
-#[derive(Debug, Clone)]
+/// Parsed expression
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    /// Function application
     App(App),
-    Lit(Result<Elem, Arc<serde_json::Error>>),
+
+    /// Literal
+    Lit(String),
+
+    /// Variable
     Var(Var),
 }
 
 // variables may start with a letter (or underscore) and may contain underscores and alphanumeric characters
-fn parse_variable(input: &str) -> IResult<&str, Var> {
+fn parse_var(input: &str) -> IResult<&str, Var> {
     recognize(pair(
         alt((alpha1, tag("_"))),
         many0_count(alt((alphanumeric1, tag("_")))))
@@ -62,14 +85,40 @@ fn parse_variable(input: &str) -> IResult<&str, Var> {
         .map(|(i, o)| (i, o.to_string()))
 }
 
+#[cfg(test)]
+mod test_parse_var {
+    use super::*;
+
+    #[test]
+    fn test_single_char_var() {
+        for s in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+            assert_eq!(parse_var(&s), Ok(("", s.clone())))
+        }
+    }
+}
+
 fn parse_comment(input: &str) -> IResult<&str, SourceBlock> {
-    preceded(tag("//"), not_line_ending)(input)
+    preceded(tag("//"), take_till(|c| c == '\r' || c == '\n'))(input)
         .map(|(i, o)| (i, SourceBlock::Comment(o.to_string())))
+}
+
+#[cfg(test)]
+mod test_parse_comment {
+    use super::*;
+
+    #[test]
+    fn test_single_char_comment() {
+        for s in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+            let mut comment_str = "//".to_string();
+            comment_str.push_str(&s);
+            assert_eq!(parse_comment(&comment_str), Ok(("", SourceBlock::Comment(s.to_string()))))
+        }
+    }
 }
 
 // var(arg0, arg1, .., argN) with 0 < N
 fn parse_app(input: &str) -> IResult<&str, App> {
-    pair(parse_variable,
+    pair(parse_var,
          delimited(
             char('('),
             separated_list1(whitespace_delimited(tag(",")), parse_expression),
@@ -81,39 +130,144 @@ fn parse_app(input: &str) -> IResult<&str, App> {
         }))
 }
 
+#[cfg(test)]
+mod test_parse_app {
+    use super::*;
+
+    #[test]
+    fn test_zero_argument_app() {
+        for s in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+            let mut app_str = s.to_string();
+            app_str.push_str("()");
+            assert_eq!(parse_app(&app_str).ok(), None)
+        }
+    }
+
+    #[test]
+    fn test_single_argument_app() {
+        for s_function in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+            for s_arg in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+                let mut app_str = s_function.clone().to_string();
+                app_str.push_str("(");
+                app_str.push_str(&s_arg);
+                app_str.push_str(")");
+                assert_eq!(parse_app(&app_str), Ok(("", App {
+                    function: s_function.clone(),
+                    args: vec![Expr::Var(s_arg)],
+                })))
+            }
+        }
+    }
+
+    #[test]
+    fn test_two_argument_app() {
+        for s_function in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+            for s_arg_1 in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+                for s_arg_2 in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
+                    for spaces_1 in vec!["", " "] {
+                        for spaces_2 in vec!["", " "] {
+                            let mut app_str = s_function.clone().to_string();
+                            app_str.push_str(&"(");
+                            app_str.push_str(&s_arg_1);
+                            app_str.push_str(&spaces_1);
+                            app_str.push_str(&",");
+                            app_str.push_str(&spaces_2);
+                            app_str.push_str(&s_arg_2);
+                            app_str.push_str(&")");
+
+                            assert_eq!(parse_app(&app_str), Ok(("", App {
+                                function: s_function.clone(),
+                                args: vec![Expr::Var(s_arg_1.clone()), Expr::Var(s_arg_2.clone())],
+                            })))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // TODO
-fn parse_elem_literal(input: &str) -> IResult<&str, Result<Elem, Arc<serde_json::Error>>> {
+fn parse_elem_literal(input: &str) -> IResult<&str, String> {
     parse_string(input)
-        .map(|(i, o)| (i, serde_json::from_str(&o).map_err(|e| Arc::new(e))))
+        .map(|(i, o)| (i, o.to_string()))
+}
+
+#[cfg(test)]
+mod test_parse_elem_literal {
+    use super::*;
+
+    #[test]
+    fn test_string_no_escapes() {
+        assert_eq!(parse_elem_literal("\"\""), Ok(("", "".to_string())));
+        assert_eq!(parse_elem_literal("\"Unit\""), Ok(("", "Unit".to_string())));
+        assert_eq!(parse_elem_literal("\"''\""), Ok(("", "''".to_string())));
+        assert_eq!(parse_elem_literal("\"[1, 2, 3]\""), Ok(("", "[1, 2, 3]".to_string())));
+    }
+
+    #[test]
+    fn test_string_escapes() {
+        assert_eq!(parse_elem_literal("\"\r\n\t\""), Ok(("", "\r\n\t".to_string())));
+    }
+
+    #[test]
+    fn test_string_escapes_failing() {
+        assert_eq!(parse_elem_literal("\"\\\""), Ok(("", "\\".to_string())));
+    }
 }
 
 fn parse_expression(input: &str) -> IResult<&str, Expr> {
     alt((parse_app.map(|o| Expr::App(o)),
          parse_elem_literal.map(|o| Expr::Lit(o)),
-         parse_variable.map(|o| Expr::Var(o))
+         parse_var.map(|o| Expr::Var(o))
     ))(input)
 }
 
 fn parse_assignment(input: &str) -> IResult<&str, SourceBlock> {
-    pair(parse_variable,
+    pair(parse_var,
         preceded(whitespace_delimited(tag("=")),
                  parse_app))(input)
         .map(|(i, o)| (i, SourceBlock::Assignment(Assignment {
             var: o.0,
             app: o.1
         })))
+}
 
+#[cfg(test)]
+mod test_parse_assignment {
+    use super::*;
+
+    #[test]
+    fn test_assignments() {
+        assert_eq!(parse_assignment("foo = convolve(bar, baz(two, \"hi\"))"), Ok(("", SourceBlock::Assignment(Assignment {
+            var: "foo".to_string(),
+            app: App {
+                function: "convolve".to_string(),
+                args: vec![
+                    Expr::Var("bar".to_string()),
+                    Expr::App(App {
+                        function: "baz".to_string(),
+                        args: vec![
+                            Expr::Var("two".to_string()),
+                            Expr::Lit("hi".to_string())
+                        ],
+                    }),
+                ],
+            },
+        }))))
+    }
 }
 
 fn parse_source_block(input: &str) -> IResult<&str, SourceBlock> {
     preceded(multispace0, alt((parse_comment, parse_assignment)))(input)
 }
 
+/// Parse a cryptoscript program as a series of assignments of the form:
+/// "var = function(arg0, arg1, .., argN)"
 pub fn parse_nom(input: &str) -> IResult<&str, SourceCode> {
     many0(parse_source_block)(input)
         .map(|(i, o)| (i, SourceCode { blocks: o }))
 }
-
 
 // utils
 // TODO: relocate
