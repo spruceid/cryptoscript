@@ -81,6 +81,8 @@ pub use typed_instrs::Instrs;
 mod parse;
 pub use parse::{parse, parse_json};
 
+mod parse_utils;
+pub use parse_utils::{parse_string, whitespace_delimited};
 mod parse_nom;
 pub use parse_nom::{parse_nom, SourceCode, SourceBlock, Comment, Var, Assignment, App, Expr};
 

@@ -22,6 +22,13 @@ impl IntoIterator for Instructions {
 }
 
 impl Instructions {
+    /// New empty list of untyped instructions
+    pub fn new() -> Self {
+        Instructions {
+            instructions: vec![],
+        }
+    }
+
     /// Convert to a list of typed instructions
     pub fn to_instrs(self) -> Result<Instrs, InstructionError> {
         Ok(Instrs {
