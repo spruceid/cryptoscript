@@ -1,8 +1,11 @@
 // use crate::elem::Elem;
 use crate::parse_utils::{whitespace_delimited, parse_string};
+use crate::restack::{Restack, StackIx};
+use crate::untyped_instruction::Instruction;
 use crate::untyped_instructions::Instructions;
 
 // use std::sync::Arc;
+use std::collections::BTreeSet;
 
 use nom::IResult;
 use nom::branch::alt;
@@ -347,16 +350,77 @@ impl InstructionsWriter {
         }
     }
 
+    /// Get the StackIx of the Var, or throw an error
+    pub fn get_var(&self, var: Var) -> Result<StackIx, SourceCodeError> {
+        self.context.iter()
+            .enumerate()
+            .find(|(_i, &var_i)| var_i == var)
+            .map(|(i, _var_i)| i)
+            .ok_or_else(|| SourceCodeError::InstructionsWriterGetVar {
+                context: self.context,
+                var: var,
+            })
+    }
+
+    /// New "temp_N" var with "N = max temp var index + 1"
+    pub fn new_var(&self) -> Var {
+        let max_var = self.context
+            .iter()
+            .filter_map(|var| {
+                let mut var_temp = var.clone();
+                let var_index = var_temp.split_off(5);
+                if var_temp == "temp_" {
+                    var_index.parse::<u64>().ok()
+                } else {
+                    None
+                }
+            })
+            .max()
+            .unwrap_or(0);
+        format!("temp_{:?}", max_var + 1)
+    }
+
     /// Restack so that the rhs is now in the lhs's slot as well
     ///
     /// lhs = rhs
     pub fn assign(&mut self, lhs: Var, rhs: Var) -> Result<(), SourceCodeError> {
+        let rhs_ix = self.get_var(rhs)?;
+        let restack_vec = self.context.iter().enumerate().map(|(i, &var_i)| if var_i == lhs {
+            rhs_ix
+        } else {
+            i
+        }).collect::<Vec<StackIx>>();
+        self.instructions.instructions.push(Instruction::Restack(Restack {
+            restack_depth: restack_vec.len(),
+            restack_vec: restack_vec,
+        }));
 
+        // TODO: update context
+        // Ok(())
     }
 
     /// Restack so that the needed_vars are at the top of the stack (not dropping any)
     pub fn restack(&mut self, needed_vars: Vec<Var>) -> Result<(), SourceCodeError> {
+        let mut restacked_vars = BTreeSet::new();
 
+        let restack_vec = needed_vars.iter()
+            .map(|needed_var| {
+                restacked_vars.insert(needed_var);
+                self.get_var(needed_var.to_string())
+            })
+            .chain(self.context
+                   .iter()
+                   .enumerate()
+                   .filter_map(|(i, var_i)| if restacked_vars.contains(var_i) { None } else { Some(Ok(i)) }))
+            .collect::<Result<Vec<StackIx>, SourceCodeError>>()?;
+
+        self.instructions.instructions.push(Instruction::Restack(Restack {
+            restack_depth: restack_vec.len(),
+            restack_vec: restack_vec,
+        }));
+
+        // TODO: update context
+        // Ok(())
     }
 
     /// Push the instruction with the Var's name and optional TypeAnnotation
@@ -424,5 +488,11 @@ impl SourceCode {
     }
 }
 
-pub enum SourceCodeError {}
+pub enum SourceCodeError {
+    InstructionsWriterGetVar {
+        context: Vec<Var>,
+        var: Var,
+    },
+}
+
 
