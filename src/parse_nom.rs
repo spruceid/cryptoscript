@@ -1,11 +1,14 @@
-// use crate::elem::Elem;
+use crate::elem::{Elem, ElemSymbol};
+use crate::elems::ElemsPopError;
 use crate::parse_utils::{whitespace_delimited, parse_string};
 use crate::restack::{Restack, StackIx};
-use crate::untyped_instruction::Instruction;
+use crate::untyped_instruction::{Instruction, InstructionError};
 use crate::untyped_instructions::Instructions;
+use crate::typed_instr::Instr;
 
+use std::cmp;
 // use std::sync::Arc;
-use std::collections::BTreeSet;
+// use std::collections::BTreeSet;
 
 use nom::IResult;
 use nom::branch::alt;
@@ -35,34 +38,34 @@ pub type TypeAnnotation = String;
 
 /// A parsed source file
 #[derive(Debug, Clone, PartialEq)]
-pub struct SourceCode {
+pub struct SourceCode<T> {
     /// Vec of SourceBlock's, in order
-    blocks: Vec<SourceBlock>,
+    blocks: Vec<SourceBlock<T>>,
 }
 
 /// A single block of parsed source code
 #[derive(Debug, Clone, PartialEq)]
-pub enum SourceBlock {
+pub enum SourceBlock<T> {
     /// A line comment
     Comment(Comment),
 
     /// An assignment, which could span multiple lines
-    Assignment(Assignment),
+    Assignment(Assignment<T>),
 }
 
 /// A single assignment: assignments are "simple," i.e. no pattern matching, etc
 #[derive(Debug, Clone, PartialEq)]
-pub struct Assignment {
+pub struct Assignment<T> {
     /// Assigned variable
     var: Var,
 
     /// Expression assigned
-    app: App,
+    app: App<T>,
 }
 
 /// An application of a function to a Vec of arguments
 #[derive(Debug, Clone, PartialEq)]
-pub struct App {
+pub struct App<T> {
     /// The function variable: "f" in "f(1, 2, 3)"
     function: Var,
 
@@ -70,17 +73,18 @@ pub struct App {
     type_annotation: Option<TypeAnnotation>,
 
     /// The argument expressions: "[1, 2, 3]" in "f(1, 2, 3)"
-    args: Vec<Expr>,
+    args: Vec<Expr<T>>,
 }
 
 /// Parsed expression
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
+pub enum Expr<T> {
     /// Function application
-    App(App),
+    App(App<T>),
 
     /// Literal
-    Lit(String),
+    // Lit(String),
+    Lit(T),
 
     /// Variable
     Var(Var),
@@ -109,7 +113,7 @@ mod test_parse_var {
     }
 }
 
-fn parse_comment(input: &str) -> IResult<&str, SourceBlock> {
+fn parse_comment<T>(input: &str) -> IResult<&str, SourceBlock<T>> {
     preceded(tag("//"), take_till(|c| c == '\r' || c == '\n'))(input)
         .map(|(i, o)| (i, SourceBlock::Comment(o.to_string())))
 }
@@ -123,13 +127,13 @@ mod test_parse_comment {
         for s in (b'a' ..= b'z').map(|x| char::to_string(&char::from(x))) {
             let mut comment_str = "//".to_string();
             comment_str.push_str(&s);
-            assert_eq!(parse_comment(&comment_str), Ok(("", SourceBlock::Comment(s.to_string()))))
+            assert_eq!(parse_comment::<String>(&comment_str), Ok(("", SourceBlock::Comment(s.to_string()))))
         }
     }
 }
 
 // var(arg0, arg1, .., argN) with 0 < N
-fn parse_app(input: &str) -> IResult<&str, App> {
+fn parse_app(input: &str) -> IResult<&str, App<String>> {
     pair(parse_var,
          delimited(
             char('('),
@@ -232,14 +236,14 @@ mod test_parse_elem_literal {
     // }
 }
 
-fn parse_expression(input: &str) -> IResult<&str, Expr> {
+fn parse_expression(input: &str) -> IResult<&str, Expr<String>> {
     alt((parse_app.map(|o| Expr::App(o)),
          parse_elem_literal.map(|o| Expr::Lit(o)),
          parse_var.map(|o| Expr::Var(o))
     ))(input)
 }
 
-fn parse_assignment(input: &str) -> IResult<&str, SourceBlock> {
+fn parse_assignment(input: &str) -> IResult<&str, SourceBlock<String>> {
     pair(parse_var,
         preceded(whitespace_delimited(tag("=")),
                  parse_app))(input)
@@ -276,13 +280,13 @@ mod test_parse_assignment {
     }
 }
 
-fn parse_source_block(input: &str) -> IResult<&str, SourceBlock> {
+fn parse_source_block(input: &str) -> IResult<&str, SourceBlock<String>> {
     preceded(multispace0, alt((parse_comment, parse_assignment)))(input)
 }
 
 /// Parse a cryptoscript program as a series of assignments of the form:
 /// "var = function(arg0, arg1, .., argN)"
-pub fn parse_nom(input: &str) -> IResult<&str, SourceCode> {
+pub fn parse_nom(input: &str) -> IResult<&str, SourceCode<String>> {
     terminated(many0(parse_source_block), multispace0)(input)
         .map(|(i, o)| (i, SourceCode { blocks: o }))
 }
@@ -330,6 +334,8 @@ mod test_parse_source_code {
 // TODO: relocate
 ///////////////////////////
 
+// API:
+// - 
 struct InstructionsWriter {
     // defined_vars: BTreeMap<Var, ()>,
     context: Vec<Var>,
@@ -399,35 +405,88 @@ impl InstructionsWriter {
         // Ok(())
     }
 
-    /// Restack so that the needed_vars are at the top of the stack (not dropping any)
-    pub fn restack(&mut self, needed_vars: Vec<Var>) -> Result<(), SourceCodeError> {
-        let mut restacked_vars = BTreeSet::new();
-
+    /// Restack so that the needed_vars are at the top of the stack (without dropping any or
+    /// modifying the context)
+    pub fn restack_for_instruction(&mut self, needed_vars: Vec<Var>) -> Result<(), SourceCodeError> {
+        let mut largest_restacked_var: Option<usize> = None;
         let restack_vec = needed_vars.iter()
             .map(|needed_var| {
-                restacked_vars.insert(needed_var);
-                self.get_var(needed_var.to_string())
+                let var_index = self.get_var(needed_var.to_string())?;
+                largest_restacked_var = Some(cmp::max(var_index, largest_restacked_var.unwrap_or(0)));
+                Ok(var_index)
             })
-            .chain(self.context
-                   .iter()
-                   .enumerate()
-                   .filter_map(|(i, var_i)| if restacked_vars.contains(var_i) { None } else { Some(Ok(i)) }))
+            .chain(largest_restacked_var
+                   .map(|restacked_vars| (0..=restacked_vars))
+                   .unwrap_or_else(|| (1..=0))
+                   .into_iter()
+                   .map(|i| Ok(i)))
+                   // .enumerate()
+                   // .filter_map(|(i, var_i)| if restacked_vars.contains(var_i) { None } else { Some(Ok(i)) }))
             .collect::<Result<Vec<StackIx>, SourceCodeError>>()?;
-
-        self.instructions.instructions.push(Instruction::Restack(Restack {
-            restack_depth: restack_vec.len(),
-            restack_vec: restack_vec,
-        }));
-
-        // TODO: update context
-        // Ok(())
+        Ok(())
     }
 
-    /// Push the instruction with the Var's name and optional TypeAnnotation
-    ///
-    /// Return the output variable
-    pub fn instruction(&mut self, function: Var, type_annotation: Option<TypeAnnotation>) -> Result<Var, SourceCodeError> {
+    pub fn var_to_instruction(function: Var, opt_type_annotation: Option<TypeAnnotation>) -> Result<Instruction, SourceCodeError> {
+        match (&*function, opt_type_annotation) {
+            ("hash_sha256", None) => Ok(Instruction::HashSha256),
+            ("check_le", None) => Ok(Instruction::CheckLe),
+            ("check_lt", None) => Ok(Instruction::CheckLt),
+            ("check_eq", None) => Ok(Instruction::CheckEq),
+            ("string_eq", None) => Ok(Instruction::StringEq),
+            ("bytes_eq", None) => Ok(Instruction::BytesEq),
+            ("concat", None) => Ok(Instruction::Concat),
+            ("slice", None) => Ok(Instruction::Slice),
+            ("index", None) => Ok(Instruction::Index),
+            ("lookup", None) => Ok(Instruction::Lookup),
+            ("assert_true", None) => Ok(Instruction::AssertTrue),
+            ("to_json", None) => Ok(Instruction::ToJson),
+            ("unpack_json", Some(type_annotation)) => {
 
+                let elem_symbol = match &*type_annotation {
+                    "Unit" => Ok(ElemSymbol::Unit),
+                    "Bool" => Ok(ElemSymbol::Bool),
+                    "Number" => Ok(ElemSymbol::Number),
+                    "Bytes" => Ok(ElemSymbol::Bytes),
+                    "String" => Ok(ElemSymbol::String),
+                    "Array" => Ok(ElemSymbol::Array),
+                    "Object" => Ok(ElemSymbol::Object),
+                    "Json" => Ok(ElemSymbol::Json),
+                    _ => Err(SourceCodeError::VarToInstructionUnknownType(type_annotation)),
+                }?;
+                Ok(Instruction::UnpackJson(elem_symbol))
+            },
+            ("string_to_bytes", None) => Ok(Instruction::StringToBytes),
+            (_, Some(type_annotation)) =>
+                Err(SourceCodeError::VarToInstructionExtraAnnotation {
+                    function: function,
+                    type_annotation: type_annotation
+                }),
+            _ => Err(SourceCodeError::VarToInstructionUnknownFunction {
+                function: function,
+                opt_type_annotation: opt_type_annotation
+            }),
+        }
+    }
+
+    /// - Push the instruction with the Var's name and optional TypeAnnotation
+    /// - Consume the variables from the stack
+    /// - Return the output variable (after pushing onto the stack)
+    pub fn instruction(&mut self, function: Var, type_annotation: Option<TypeAnnotation>) -> Result<Var, SourceCodeError> {
+        let instruction = Self::var_to_instruction(function, type_annotation)?;
+        let instr = instruction.to_instr()?;
+        let instr_type = match instr {
+            Instr::Instr(instr2) => Ok(instr2.type_of()?),
+            Instr::Restack(restack) => Err(SourceCodeError::InstructionRestackUnexpected(restack)),
+        }?;
+
+        // instruction written to log
+        self.instructions.push(instruction);
+        // variables consumed by instruction
+        self.context.drain(0..instr_type.i_type.len());
+        let output_var = self.new_var();
+        // variable produced by instruction
+        self.context.insert(0, output_var);
+        Ok(output_var)
     }
 
     pub fn finalize(&self) -> Result<Instructions, SourceCodeError> {
@@ -435,21 +494,50 @@ impl InstructionsWriter {
     }
 }
 
-impl Expr {
+impl Expr<Elem> {
     /// Output variable representing the arg
     pub fn to_instructions(&self, writer: &mut InstructionsWriter) -> Result<Var, SourceCodeError> {
+        match self {
+            Self::App(app) => app.to_instructions(writer),
+            Self::Lit(lit) => {
+                let new_var = writer.new_var();
+                writer.instructions.push(Instruction::Push(*lit));
+                writer.context.insert(0, new_var);
+                Ok(new_var)
+            },
+            Self::Var(var) => {
+                let var_string = var.to_string();
+                writer.get_var(var_string)?;
+                Ok(var_string)
+            },
+        }
+
+// /// Parsed expression
+// #[derive(Debug, Clone, PartialEq)]
+// pub enum Expr<T> {
+//     /// Function application
+//     App(App<T>),
+
+//     /// Literal
+//     // Lit(String),
+//     Lit(T),
+
+//     /// Variable
+//     Var(Var),
+// }
+
 
     }
 }
 
-impl App {
+impl App<Elem> {
     /// Output variable returned
     pub fn to_instructions(&self, writer: &mut InstructionsWriter) -> Result<Var, SourceCodeError> {
         let needed_vars = self.args
             .iter()
             .map(|arg| arg.to_instructions(writer))
             .collect::<Result<Vec<Var>, SourceCodeError>>()?;
-        writer.restack(needed_vars);
+        writer.restack_for_instruction(needed_vars);
         writer.instruction(self.function, self.type_annotation)
 
         // 1. iterate through args
@@ -462,14 +550,14 @@ impl App {
 }
 
 
-impl Assignment {
+impl Assignment<Elem> {
     pub fn to_instructions(&self, writer: &mut InstructionsWriter) -> Result<(), SourceCodeError> {
         let output_var = self.app.to_instructions(writer)?;
         writer.assign(self.var, output_var)
     }
 }
 
-impl SourceBlock {
+impl SourceBlock<Elem> {
     pub fn to_instructions(&self, writer: &mut InstructionsWriter) -> Result<(), SourceCodeError> {
         match self {
             Self::Comment(_) => Ok(()),
@@ -478,7 +566,7 @@ impl SourceBlock {
     }
 }
 
-impl SourceCode {
+impl SourceCode<Elem> {
     pub fn to_instructions(&self) -> Result<Instructions, SourceCodeError> {
         let mut writer = InstructionsWriter::new();
         for block in self.blocks {
@@ -489,10 +577,46 @@ impl SourceCode {
 }
 
 pub enum SourceCodeError {
+    // var not found in context
     InstructionsWriterGetVar {
         context: Vec<Var>,
         var: Var,
     },
+
+    VarToInstructionUnknownType(TypeAnnotation),
+
+    VarToInstructionExtraAnnotation {
+        function: Var,
+        type_annotation: TypeAnnotation,
+    },
+
+    VarToInstructionUnknownFunction {
+        function: Var,
+        opt_type_annotation: Option<TypeAnnotation>,
+    },
+
+    // TODO: make this error impossible by using a different enum
+    // Restack not expected to be able to be generated at this stage
+    InstructionRestackUnexpected(Restack),
+
+    /// "ElemsPop failed: \n{0:?}\n"
+    // #[error("ElemsPop failed: \n{0:?}\n")]
+    ElemsPopError(ElemsPopError),
+
+    /// "Instruction failed: \n{0:?}\n"
+    // #[error("Instruction failed: \n{0:?}\n")]
+    InstructionError(InstructionError),
 }
 
+impl From<ElemsPopError> for SourceCodeError {
+    fn from(error: ElemsPopError) -> Self {
+        Self::ElemsPopError(error)
+    }
+}
+
+impl From<InstructionError> for SourceCodeError {
+    fn from(error: InstructionError) -> Self {
+        Self::InstructionError(error)
+    }
+}
 

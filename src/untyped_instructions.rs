@@ -29,6 +29,11 @@ impl Instructions {
         }
     }
 
+    /// Push an Instruction onto the end of the list of instructions
+    pub fn push(&mut self, instruction: Instruction) -> () {
+        self.instructions.push(instruction)
+    }
+
     /// Convert to a list of typed instructions
     pub fn to_instrs(self) -> Result<Instrs, InstructionError> {
         Ok(Instrs {
