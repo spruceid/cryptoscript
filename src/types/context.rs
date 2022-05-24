@@ -59,13 +59,8 @@ mod context_display_tests {
 
     #[test]
     fn test_empty() {
-        let big_type_id = TypeId {
-            type_id: 2^32
-        };
-        let context = Context {
-            context: BTreeMap::new(),
-            next_type_id: big_type_id,
-        };
+        let big_type_id = TypeId::new(2^32);
+        let context = Context::new().offset(big_type_id);
         assert_eq!("", format!("{}", context));
     }
 
@@ -76,14 +71,8 @@ mod context_display_tests {
                 type_set: EnumSet::only(elem_symbol),
                 info: vec![],
             };
-            let mut context_map = BTreeMap::new();
-            context_map.insert(TypeId { type_id: 0 }, elem_type.clone());
-            let context = Context {
-                context: context_map,
-                next_type_id: TypeId {
-                    type_id: 1,
-                },
-            };
+            let mut context = Context::new();
+            context.push(elem_type.clone());
             assert_eq!(format!("\n∀ (t0 ∊ {}),", elem_type), format!("{}", context));
         }
     }

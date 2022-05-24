@@ -135,7 +135,6 @@ impl Type {
 
     /// Unify two Type's by producing the type of their composition.
     ///
-    /// ```
     /// f : self
     /// g : other
     /// self.compose(other) : (f ++ g).type_of()
@@ -146,7 +145,6 @@ impl Type {
     /// self.i_type
     /// self.o_type
     /// -> output
-    /// ```
     ///
     /// 1. iterate through (zip(self.o_type, other.i_type)) and unify the pairs into a new context
     /// 2. collect the remainder and add them to the context
@@ -228,14 +226,14 @@ impl Type {
 // ```
 //
 // Results in:
-// ```
+//
 // ∀ (t0 ∊ {A, B, C}),
 // ∀ (t1 ∊ {B, C}),
 // ..
 // ∀ (tN ∊ {D, E, F}),
 // [t0, t1, .., tN] ->
 // [ti, tj, .., tk]
-// ```
+//
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         // TODO: fix normalize
@@ -268,13 +266,8 @@ mod type_display_tests {
 
     #[test]
     fn test_empty() {
-        let big_type_id = TypeId {
-            type_id: 2^32
-        };
-        let context = Context {
-            context: BTreeMap::new(),
-            next_type_id: big_type_id,
-        };
+        let big_type_id = TypeId::new(2^32);
+        let context = Context::new().offset(big_type_id);
         let example_type = Type {
             context: context,
             i_type: vec![],
@@ -290,18 +283,12 @@ mod type_display_tests {
                 type_set: EnumSet::only(elem_symbol),
                 info: vec![],
             };
-            let mut context_map = BTreeMap::new();
-            context_map.insert(TypeId { type_id: 0 }, elem_type.clone());
-            let context = Context {
-                context: context_map,
-                next_type_id: TypeId {
-                    type_id: 1,
-                },
-            };
+            let mut context = Context::new();
+            let type_id = context.push(elem_type.clone());
             let example_type = Type {
                 context: context,
-                i_type: vec![TypeId { type_id: 0 }, TypeId { type_id: 0 }],
-                o_type: vec![TypeId { type_id: 0 }],
+                i_type: vec![type_id, type_id],
+                o_type: vec![type_id],
             };
             assert_eq!(format!("\n∀ (t0 ∊ {}),\n[t0, t0] ->\n[t0]", elem_type), format!("{}", example_type));
         }
