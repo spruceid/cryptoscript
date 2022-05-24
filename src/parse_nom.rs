@@ -336,7 +336,8 @@ mod test_parse_source_code {
 
 // API:
 // - 
-struct InstructionsWriter {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstructionsWriter {
     // defined_vars: BTreeMap<Var, ()>,
     context: Vec<Var>,
     instructions: Instructions,
@@ -357,14 +358,14 @@ impl InstructionsWriter {
     }
 
     /// Get the StackIx of the Var, or throw an error
-    pub fn get_var(&self, var: Var) -> Result<StackIx, SourceCodeError> {
+    pub fn get_var(&self, var: &Var) -> Result<StackIx, SourceCodeError> {
         self.context.iter()
             .enumerate()
-            .find(|(_i, &var_i)| var_i == var)
+            .find(|(_i, var_i)| *var_i == var)
             .map(|(i, _var_i)| i)
             .ok_or_else(|| SourceCodeError::InstructionsWriterGetVar {
-                context: self.context,
-                var: var,
+                context: self.context.clone(),
+                var: var.clone(),
             })
     }
 
@@ -389,45 +390,54 @@ impl InstructionsWriter {
     /// Restack so that the rhs is now in the lhs's slot as well
     ///
     /// lhs = rhs
-    pub fn assign(&mut self, lhs: Var, rhs: Var) -> Result<(), SourceCodeError> {
+    pub fn assign(&mut self, lhs: Var, rhs: &Var) -> Result<(), SourceCodeError> {
         let rhs_ix = self.get_var(rhs)?;
-        let restack_vec = self.context.iter().enumerate().map(|(i, &var_i)| if var_i == lhs {
-            rhs_ix
+        let assigned_context = self.context.iter().enumerate().map(|(i, var_i)| if *var_i == lhs {
+            (rhs_ix, rhs)
         } else {
-            i
-        }).collect::<Vec<StackIx>>();
+            (i, var_i)
+        });
+
+        let restack_vec = assigned_context.clone()
+            .map(|(i, _var_i)| i)
+            .collect::<Vec<StackIx>>();
+        self.context = assigned_context.clone()
+            .map(|(_i, var_i)| var_i.clone())
+            .collect::<Vec<Var>>();
+
         self.instructions.instructions.push(Instruction::Restack(Restack {
             restack_depth: restack_vec.len(),
             restack_vec: restack_vec,
         }));
 
-        // TODO: update context
-        // Ok(())
+        Ok(())
     }
 
     /// Restack so that the needed_vars are at the top of the stack (without dropping any or
     /// modifying the context)
     pub fn restack_for_instruction(&mut self, needed_vars: Vec<Var>) -> Result<(), SourceCodeError> {
-        let mut largest_restacked_var: Option<usize> = None;
+        let largest_restacked_var: Option<usize> = needed_vars.iter()
+            .try_fold(None, |current_largest_restacked_var, needed_var| {
+                let var_index = self.get_var(needed_var)?;
+                Ok::<Option<usize>, SourceCodeError>(Some(cmp::max(var_index, current_largest_restacked_var.unwrap_or(0))))
+            })?;
         let restack_vec = needed_vars.iter()
-            .map(|needed_var| {
-                let var_index = self.get_var(needed_var.to_string())?;
-                largest_restacked_var = Some(cmp::max(var_index, largest_restacked_var.unwrap_or(0)));
-                Ok(var_index)
-            })
+            .map(|needed_var| self.get_var(needed_var))
             .chain(largest_restacked_var
                    .map(|restacked_vars| (0..=restacked_vars))
                    .unwrap_or_else(|| (1..=0))
                    .into_iter()
                    .map(|i| Ok(i)))
-                   // .enumerate()
-                   // .filter_map(|(i, var_i)| if restacked_vars.contains(var_i) { None } else { Some(Ok(i)) }))
             .collect::<Result<Vec<StackIx>, SourceCodeError>>()?;
+        self.instructions.instructions.push(Instruction::Restack(Restack {
+            restack_depth: restack_vec.len(),
+            restack_vec: restack_vec,
+        }));
         Ok(())
     }
 
     pub fn var_to_instruction(function: Var, opt_type_annotation: Option<TypeAnnotation>) -> Result<Instruction, SourceCodeError> {
-        match (&*function, opt_type_annotation) {
+        match (&*function, opt_type_annotation.clone()) {
             ("hash_sha256", None) => Ok(Instruction::HashSha256),
             ("check_le", None) => Ok(Instruction::CheckLe),
             ("check_lt", None) => Ok(Instruction::CheckLt),
@@ -463,7 +473,7 @@ impl InstructionsWriter {
                 }),
             _ => Err(SourceCodeError::VarToInstructionUnknownFunction {
                 function: function,
-                opt_type_annotation: opt_type_annotation
+                opt_type_annotation: opt_type_annotation,
             }),
         }
     }
@@ -473,7 +483,7 @@ impl InstructionsWriter {
     /// - Return the output variable (after pushing onto the stack)
     pub fn instruction(&mut self, function: Var, type_annotation: Option<TypeAnnotation>) -> Result<Var, SourceCodeError> {
         let instruction = Self::var_to_instruction(function, type_annotation)?;
-        let instr = instruction.to_instr()?;
+        let instr = instruction.clone().to_instr()?;
         let instr_type = match instr {
             Instr::Instr(instr2) => Ok(instr2.type_of()?),
             Instr::Restack(restack) => Err(SourceCodeError::InstructionRestackUnexpected(restack)),
@@ -485,12 +495,12 @@ impl InstructionsWriter {
         self.context.drain(0..instr_type.i_type.len());
         let output_var = self.new_var();
         // variable produced by instruction
-        self.context.insert(0, output_var);
+        self.context.insert(0, output_var.clone());
         Ok(output_var)
     }
 
     pub fn finalize(&self) -> Result<Instructions, SourceCodeError> {
-        Ok(self.instructions)
+        Ok(self.instructions.clone())
     }
 }
 
@@ -501,13 +511,13 @@ impl Expr<Elem> {
             Self::App(app) => app.to_instructions(writer),
             Self::Lit(lit) => {
                 let new_var = writer.new_var();
-                writer.instructions.push(Instruction::Push(*lit));
-                writer.context.insert(0, new_var);
+                writer.instructions.push(Instruction::Push(lit.clone()));
+                writer.context.insert(0, new_var.clone());
                 Ok(new_var)
             },
             Self::Var(var) => {
                 let var_string = var.to_string();
-                writer.get_var(var_string)?;
+                writer.get_var(&var_string)?;
                 Ok(var_string)
             },
         }
@@ -537,8 +547,8 @@ impl App<Elem> {
             .iter()
             .map(|arg| arg.to_instructions(writer))
             .collect::<Result<Vec<Var>, SourceCodeError>>()?;
-        writer.restack_for_instruction(needed_vars);
-        writer.instruction(self.function, self.type_annotation)
+        writer.restack_for_instruction(needed_vars)?;
+        writer.instruction(self.function.clone(), self.type_annotation.clone())
 
         // 1. iterate through args
         //     lit => push => var
@@ -553,7 +563,7 @@ impl App<Elem> {
 impl Assignment<Elem> {
     pub fn to_instructions(&self, writer: &mut InstructionsWriter) -> Result<(), SourceCodeError> {
         let output_var = self.app.to_instructions(writer)?;
-        writer.assign(self.var, output_var)
+        writer.assign(self.var.clone(), &output_var)
     }
 }
 
@@ -569,13 +579,14 @@ impl SourceBlock<Elem> {
 impl SourceCode<Elem> {
     pub fn to_instructions(&self) -> Result<Instructions, SourceCodeError> {
         let mut writer = InstructionsWriter::new();
-        for block in self.blocks {
+        for block in &self.blocks {
             block.to_instructions(&mut writer)?
         }
         writer.finalize()
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum SourceCodeError {
     // var not found in context
     InstructionsWriterGetVar {
