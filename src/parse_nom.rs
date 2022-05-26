@@ -237,9 +237,9 @@ mod test_parse_elem_literal {
 }
 
 fn parse_expression(input: &str) -> IResult<&str, Expr<String>> {
-    alt((parse_app.map(|o| Expr::App(o)),
-         parse_elem_literal.map(|o| Expr::Lit(o)),
-         parse_var.map(|o| Expr::Var(o))
+    alt((parse_app.map(Expr::App),
+         parse_elem_literal.map(Expr::Lit),
+         parse_var.map(Expr::Var)
     ))(input)
 }
 
@@ -334,26 +334,33 @@ mod test_parse_source_code {
 // TODO: relocate
 ///////////////////////////
 
-// API:
-// - 
+/// Create a series of Instructions using a context of named Var's
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstructionsWriter {
     // defined_vars: BTreeMap<Var, ()>,
+    /// The current (untyped) context of Var's on the stack
     context: Vec<Var>,
+
+    /// The current output series of instructions
     instructions: Instructions,
     // stack_size: usize,
+}
+
+impl Default for InstructionsWriter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InstructionsWriter {
     // writer.push("INPUT");
 
+    /// Create a new InstructionsWriter with an empty context
+    /// (i.e. no defined Var's) and output Instructions
     pub fn new() -> Self {
         Self {
             context: vec![],
             instructions: Instructions::new(),
-
-            // BTreeMap::new(),
-            // stack_size: 0,
         }
     }
 
@@ -436,6 +443,8 @@ impl InstructionsWriter {
         Ok(())
     }
 
+    /// Convert a Var to an untyped Instruction, given an optional
+    /// TypeAnnotation (required for e.g. UnpackJson)
     pub fn var_to_instruction(function: Var, opt_type_annotation: Option<TypeAnnotation>) -> Result<Instruction, SourceCodeError> {
         match (&*function, opt_type_annotation.clone()) {
             ("hash_sha256", None) => Ok(Instruction::HashSha256),
@@ -499,6 +508,7 @@ impl InstructionsWriter {
         Ok(output_var)
     }
 
+    /// The final list of Instructions
     pub fn finalize(&self) -> Result<Instructions, SourceCodeError> {
         Ok(self.instructions.clone())
     }
@@ -521,22 +531,6 @@ impl Expr<Elem> {
                 Ok(var_string)
             },
         }
-
-// /// Parsed expression
-// #[derive(Debug, Clone, PartialEq)]
-// pub enum Expr<T> {
-//     /// Function application
-//     App(App<T>),
-
-//     /// Literal
-//     // Lit(String),
-//     Lit(T),
-
-//     /// Variable
-//     Var(Var),
-// }
-
-
     }
 }
 
@@ -561,6 +555,7 @@ impl App<Elem> {
 
 
 impl Assignment<Elem> {
+    /// Convert an Assignment to Instructions, given an InstructionsWriter.
     pub fn to_instructions(&self, writer: &mut InstructionsWriter) -> Result<(), SourceCodeError> {
         let output_var = self.app.to_instructions(writer)?;
         writer.assign(self.var.clone(), &output_var)
@@ -568,6 +563,7 @@ impl Assignment<Elem> {
 }
 
 impl SourceBlock<Elem> {
+    /// Convert a SourceBlock to Instructions, given an InstructionsWriter.
     pub fn to_instructions(&self, writer: &mut InstructionsWriter) -> Result<(), SourceCodeError> {
         match self {
             Self::Comment(_) => Ok(()),
@@ -577,6 +573,7 @@ impl SourceBlock<Elem> {
 }
 
 impl SourceCode<Elem> {
+    /// Convert a SourceBlock to Instructions, given an InstructionsWriter.
     pub fn to_instructions(&self) -> Result<Instructions, SourceCodeError> {
         let mut writer = InstructionsWriter::new();
         for block in &self.blocks {
@@ -586,6 +583,7 @@ impl SourceCode<Elem> {
     }
 }
 
+/// Source code errors
 #[derive(Debug, Clone)]
 pub enum SourceCodeError {
     // var not found in context

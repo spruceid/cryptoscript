@@ -148,7 +148,7 @@ fn sha256(input: &Vec<u8>) -> Vec<u8> {
 
     // read hash digest and consume hasher
     let result = hasher.finalize();
-    return result.to_vec();
+    result.to_vec()
 }
 
 #[cfg(test)]
