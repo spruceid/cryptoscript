@@ -19,7 +19,7 @@ use thiserror::Error;
 
 /// Parse a list of Instruction's using serde_json::from_str
 pub fn parse_json(input: &str) -> Result<Instructions, ParseError> {
-    match serde_json::from_str(&input) {
+    match serde_json::from_str(input) {
         Err(serde_error) => Err(ParseError::SerdeJsonError(serde_error)),
         Ok(instructions) => Ok(instructions),
     }
@@ -34,7 +34,7 @@ pub fn parse(input: &str) -> Result<Instructions, ParseError> {
             .split(';')
             .map(|term| term.trim())
             .filter(|&term| !term.is_empty())
-            .map(|term| parse_instruction(term))
+            .map(parse_instruction)
             .collect::<Result<Vec<Instruction>, ParseError>>()?,
     })
 }
@@ -57,7 +57,7 @@ impl FromStr for Elem {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.as_bytes() {
             [b'b', b'"', inner @ .., b'"'] => {
-                return Ok(Elem::Bytes(inner.to_vec()));
+                Ok(Elem::Bytes(inner.to_vec()))
             }
             [b'0', b'x', hex_digits @ ..] => {
                 if hex_digits.len() != 64 {
@@ -88,7 +88,7 @@ impl FromStr for Elem {
                         },
                     )?;
 
-                return Ok(Elem::Bytes(bytes))
+                Ok(Elem::Bytes(bytes))
             }
             // No need to support booleans, but it is trivial to do so.
             _ => Err(ParseError::UnsupportedElem(s.to_string())),

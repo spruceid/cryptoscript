@@ -38,7 +38,7 @@ impl Instruction {
     pub fn to_instr(self) -> Result<Instr, InstructionError> {
         match self {
             Self::Push(elem) => Ok(Instr::Instr(Arc::new(Push { push: elem }))),
-            Self::Restack(restack) => Ok(Instr::Restack(restack.clone())),
+            Self::Restack(restack) => Ok(Instr::Restack(restack)),
             Self::HashSha256 => Ok(Instr::Instr(Arc::new(HashSha256 {}))),
             Self::CheckLe => Ok(Instr::Instr(Arc::new(CheckLe {}))),
             Self::CheckLt => Ok(Instr::Instr(Arc::new(CheckLt {}))),

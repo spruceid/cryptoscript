@@ -680,10 +680,7 @@ impl IsInstructionT for CheckLt {
                 lhs: lhs,
                 rhs: rhs
         })?;
-        let result = match cmp_result {
-            cmp::Ordering::Less => true,
-            _ => false,
-        };
+        let result = matches!(cmp_result, cmp::Ordering::Less);
         returning.returning(result);
         Ok(())
     }
@@ -727,10 +724,7 @@ impl IsInstructionT for CheckEq {
                 lhs: lhs,
                 rhs: rhs
         })?;
-        let result = match cmp_result {
-            cmp::Ordering::Equal => true,
-            _ => false,
-        };
+        let result = matches!(cmp_result, cmp::Ordering::Equal);
         returning.returning(result);
         Ok(())
     }

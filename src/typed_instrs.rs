@@ -18,6 +18,12 @@ pub struct Instrs {
     pub instrs: Vec<Instr>,
 }
 
+impl Default for Instrs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Instrs {
     /// A new empty list of Instr's
     pub fn new() -> Self {
@@ -41,7 +47,7 @@ impl Instrs {
                     println!("{}\n",
                              restack
                              .type_of(From::from(line_no))
-                             .map_err(|e| ElemsPopError::RestackError(e))?);
+                             .map_err(ElemsPopError::RestackError)?);
                 },
             }
         }
@@ -54,21 +60,21 @@ impl Instrs {
     /// what's the monomorphic type of Self?
     pub fn type_of_mono(&self, num_input_json: usize) -> Result<StackType, StackInstructionError> {
         let mut stack_type = (0..num_input_json).map(|_| ElemType::from_locations(EnumSet::only(ElemSymbol::Json), vec![])).collect();
-        for (line_no, instr_or_restack) in (&self.instrs).into_iter().enumerate() {
+        for (line_no, instr_or_restack) in (&self.instrs).iter().enumerate() {
             println!("------------------------------------------------------------------------------------------");
             println!("line_no: {}", line_no);
             println!("{:?}\n", instr_or_restack);
             match instr_or_restack {
                 Instr::Instr(instr) => {
                     let mut instr_type = instr.type_of()
-                        .map_err(|e| StackInstructionError::ElemsPopError(e))?;
+                        .map_err(StackInstructionError::ElemsPopError)?;
                     println!("instr: {}\n", instr_type);
                     stack_type = instr_type.specialize_to_input_stack(stack_type)
-                        .map_err(|e| StackInstructionError::TypeError(e))?;
+                        .map_err(StackInstructionError::TypeError)?;
                 },
                 Instr::Restack(restack) => {
                     restack.run(&mut stack_type.types)
-                        .map_err(|e| StackInstructionError::RestackError(e))?
+                        .map_err(StackInstructionError::RestackError)?
                 },
             }
         }
@@ -82,7 +88,7 @@ impl Instrs {
     /// instructions have non-matching types, e.g. if "Push(true)" is
     /// immediately followed by "UnpackJson".
     pub fn run(&self, stack: &mut Stack) -> Result<(), StackInstructionError> {
-        for (line_no, instr_or_restack) in (&self.instrs).into_iter().enumerate() {
+        for (line_no, instr_or_restack) in (&self.instrs).iter().enumerate() {
             stack.debug().map_err(|e| StackInstructionError::DebugJsonError(Arc::new(e)))?;
             println!("------------------------------------------------------------------------------------------");
             println!("line_no: {}", line_no);
@@ -108,7 +114,7 @@ impl Instrs {
                 },
                 Instr::Restack(restack) => {
                     restack.run(&mut stack.stack)
-                        .map_err(|e| StackInstructionError::RestackError(e))?
+                        .map_err(StackInstructionError::RestackError)?
                 },
             }
         }

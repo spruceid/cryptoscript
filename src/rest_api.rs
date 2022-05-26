@@ -23,9 +23,9 @@ impl Api {
     /// Create a new Api that's never been called
     pub fn new(request: Value, response: Value, rate_limit_seconds: u64) -> Self {
         Api {
-            request: request,
-            response: response,
-            rate_limit_seconds: rate_limit_seconds,
+            request,
+            response,
+            rate_limit_seconds,
             last_api_call: None,
         }
     }

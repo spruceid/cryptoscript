@@ -328,8 +328,8 @@ async fn main() {
 
 
 
-    println!("");
-    println!("");
+    println!();
+    println!();
     // println!("Template test:");
 
     // ERC-20 token balance (currently)

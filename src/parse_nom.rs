@@ -209,7 +209,7 @@ mod test_parse_app {
 // TODO
 fn parse_elem_literal(input: &str) -> IResult<&str, String> {
     parse_string(input)
-        .map(|(i, o)| (i, o.to_string()))
+        // .map(|(i, o)| (i, o))
 }
 
 #[cfg(test)]
@@ -422,6 +422,7 @@ impl InstructionsWriter {
 
     /// Restack so that the needed_vars are at the top of the stack (without dropping any or
     /// modifying the context)
+    #[allow(clippy::reversed_empty_ranges)] // (1..=0) is intended to be empty
     pub fn restack_for_instruction(&mut self, needed_vars: Vec<Var>) -> Result<(), SourceCodeError> {
         let largest_restacked_var: Option<usize> = needed_vars.iter()
             .try_fold(None, |current_largest_restacked_var, needed_var| {
@@ -434,7 +435,7 @@ impl InstructionsWriter {
                    .map(|restacked_vars| (0..=restacked_vars))
                    .unwrap_or_else(|| (1..=0))
                    .into_iter()
-                   .map(|i| Ok(i)))
+                   .map(Ok))
             .collect::<Result<Vec<StackIx>, SourceCodeError>>()?;
         self.instructions.instructions.push(Instruction::Restack(Restack {
             restack_depth: restack_vec.len(),
