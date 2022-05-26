@@ -1,4 +1,6 @@
 /target
 Cargo.lock
-*.json
 *.profraw
+/*.json
+/examples/cache.json
+/examples/local_cache.json

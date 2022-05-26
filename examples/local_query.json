@@ -1,0 +1,82 @@
+{
+  "queries": [
+    {
+      "name": "setup_erc20",
+      "url": "http://127.0.0.1:8080/apis/erc20",
+      "template": {
+        "Object": {
+          "request": {
+            "Object": {
+              "module": {
+                "String": "account"
+              },
+              "action": {
+                "String": "tokenbalance"
+              },
+              "contractaddress": {
+                "String": "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
+              },
+              "address": {
+                "String": "0xe04f27eb70e025b78871a2ad7eabe85e61212761"
+              },
+              "tag": {
+                "String": "latest"
+              },
+              "apikey": {
+                "String": "DUMMY_ETHERSCAN_API_KEY"
+              }
+            }
+          },
+          "response": {
+            "Object": {
+              "status": {
+                "String": "1"
+              },
+              "message": {
+                "String": "OK"
+              },
+              "result": {
+                "String": "135499"
+              }
+            }
+          },
+          "rate_limit_seconds": {
+            "Number": 1
+          },
+          "last_api_call": "Null"
+        }
+      },
+      "cached": true,
+      "query_type": "Put"
+    },
+
+    {
+      "name": "erc20",
+      "url": "http://127.0.0.1:8080/apis/erc20",
+      "template": {
+        "Object": {
+          "module": {
+            "String": "account"
+          },
+          "action": {
+            "String": "tokenbalance"
+          },
+          "contractaddress": {
+            "Var": "contractaddress"
+          },
+          "address": {
+            "Var": "address"
+          },
+          "tag": {
+            "String": "latest"
+          },
+          "apikey": {
+            "Var": "apikey"
+          }
+        }
+      },
+      "cached": true,
+      "query_type": "Get"
+    }
+  ]
+}

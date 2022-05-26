@@ -1,0 +1,32 @@
+{
+  "queries": [
+    {
+      "name": "erc20",
+      "url": "https://api.etherscan.io/api",
+      "template": {
+        "Object": {
+          "module": {
+            "String": "account"
+          },
+          "action": {
+            "String": "tokenbalance"
+          },
+          "contractaddress": {
+            "Var": "contractaddress"
+          },
+          "address": {
+            "Var": "address"
+          },
+          "tag": {
+            "String": "latest"
+          },
+          "apikey": {
+            "Var": "apikey"
+          }
+        }
+      },
+      "cached": true,
+      "query_type": "Get"
+    }
+  ]
+}

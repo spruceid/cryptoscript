@@ -79,3 +79,65 @@ the presenter "clears" a puzzle to get authorized. cryptoscript is extensible
 with modules to support all blockchain networks and off-chain data. This
 policy-as-code primitive can create infinite matching representations.
 
+## Demo
+
+There are two demos:
+- Local: this demo is self-contained to not require any API keys
+- Etherscan: this demo requires a free Etherscan API key, which you can get
+  [here](https://docs.etherscan.io/getting-started/viewing-api-usage-statistics)
+
+### Local Demo
+
+The local demo requires running a tiny test server, which can be started with the following command:
+
+```bash
+cargo run --bin rest-api
+```
+
+Note: this API accepts PUT's of new GET "API's" for testing: each requires a
+fixed `application/json` request body and returns a fixed `application/json`
+response.
+
+To run the demo itself, run:
+
+```bash
+cargo r --bin cryptoscript -- \
+  --code examples/local_demo_code.json \
+  --cache-location examples/local_cache.json \
+  --input examples/input.json \
+  --queries examples/local_query.json \
+  --variables '{
+    "contractaddress": "0x57d90b64a1a57749b0f932f1a3395792e12e7055",
+    "address": "0xe04f27eb70e025b78871a2ad7eabe85e61212761",
+    "apikey": "DUMMY_ETHERSCAN_API_KEY" }'
+```
+
+You'll see `successful!` if it completes without any errors.
+
+### Etherscan Demo
+
+*NOTE: this demo currently ignores any errors from Etherscan.*
+
+This demo requires a free Etherscan API key, which you can get
+[here](https://docs.etherscan.io/getting-started/viewing-api-usage-statistics)
+
+Once you have an API key, replace `YOUR_ETHERSCAN_API_KEY` below with your API
+key from Etherscan to run the demo:
+
+```bash
+cargo r --bin cryptoscript -- \
+  --code examples/demo_code.json \
+  --cache-location examples/cache.json \
+  --input examples/input.json \
+  --queries examples/query.json \
+  --variables '{
+    "contractaddress": "0x57d90b64a1a57749b0f932f1a3395792e12e7055",
+    "address": "0xe04f27eb70e025b78871a2ad7eabe85e61212761",
+    "apikey": "YOUR_ETHERSCAN_API_KEY" }'
+```
+
+### Troubleshooting Demo's
+
+If you have any issues, make sure to clear any `cache.json` files to ensure
+you're receiving fresh query responses.
+
