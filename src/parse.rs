@@ -8,56 +8,47 @@
 ///
 /// Where CHARS is any number of characters which aren't escaped double-quotes (\") and HEX is a 64
 /// digit hexadecimal number.
+
+use crate::elem::Elem;
+use crate::untyped_instruction::Instruction;
+use crate::untyped_instructions::Instructions;
+
 use std::str::FromStr;
 
-use generic_array::{typenum::U32, GenericArray};
 use thiserror::Error;
 
-pub type Instructions = Vec<Instruction>;
-
-#[derive(Debug)]
-pub enum Instruction {
-    Push(Elem),
-    FnHashSha256,
-    FnCheckEqual,
-    FnAssertTrue,
+/// Parse a list of Instruction's using serde_json::from_str
+pub fn parse_json(input: &str) -> Result<Instructions, ParseError> {
+    match serde_json::from_str(&input) {
+        Err(serde_error) => Err(ParseError::SerdeJsonError(serde_error)),
+        Ok(instructions) => Ok(instructions),
+    }
 }
 
+/// Parse a ";"-separated list of instructions, where individual Instruction's
+/// are parsed with parse_instruction
 pub fn parse(input: &str) -> Result<Instructions, ParseError> {
-    input
-        .split(';')
-        .map(|term| term.trim())
-        .filter(|&term| !term.is_empty())
-        .map(|term| parse_instruction(term))
-        .collect()
+    Ok(Instructions {
+        instructions:
+            input
+            .split(';')
+            .map(|term| term.trim())
+            .filter(|&term| !term.is_empty())
+            .map(|term| parse_instruction(term))
+            .collect::<Result<Vec<Instruction>, ParseError>>()?,
+    })
 }
 
+/// Parse an individual Instruction
 fn parse_instruction(term: &str) -> Result<Instruction, ParseError> {
     if let Some(rest) = term.strip_prefix("push") {
         return Ok(Instruction::Push(rest.trim().parse()?));
     }
     match term {
-        "assert_true" => Ok(Instruction::FnAssertTrue),
-        "check_equal" => Ok(Instruction::FnCheckEqual),
-        "hash_sha256" => Ok(Instruction::FnHashSha256),
+        "assert_true" => Ok(Instruction::AssertTrue),
+        "check_equal" => Ok(Instruction::CheckEq),
+        "hash_sha256" => Ok(Instruction::HashSha256),
         _ => Err(ParseError::UnsupportedInstruction(term.to_string())),
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Elem {
-    Bool(bool),
-    Bytes32(GenericArray<u8, U32>),
-    BytesN(Vec<u8>),
-}
-
-impl Elem {
-    pub fn simple_type(&self) -> &'static str {
-        match self {
-            Self::Bool(_) => "bool",
-            Self::Bytes32(_) => "Bytes(32)",
-            Self::BytesN(_) => "Bytes(N)",
-        }
     }
 }
 
@@ -66,7 +57,7 @@ impl FromStr for Elem {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.as_bytes() {
             [b'b', b'"', inner @ .., b'"'] => {
-                return Ok(Elem::BytesN(inner.to_vec()));
+                return Ok(Elem::Bytes(inner.to_vec()));
             }
             [b'0', b'x', hex_digits @ ..] => {
                 if hex_digits.len() != 64 {
@@ -97,15 +88,7 @@ impl FromStr for Elem {
                         },
                     )?;
 
-                if let Some(array) = GenericArray::from_exact_iter(bytes) {
-                    return Ok(Elem::Bytes32(array));
-                } else {
-                    use std::hint::unreachable_unchecked;
-                    // if the 'bytes' vec has been constructed without error, then it is 32 bytes
-                    // long, as the hex_digits slice is checked to be 64 digits long, and each pair
-                    // of digits is used to make one byte.
-                    unsafe { unreachable_unchecked() }
-                }
+                return Ok(Elem::Bytes(bytes))
             }
             // No need to support booleans, but it is trivial to do so.
             _ => Err(ParseError::UnsupportedElem(s.to_string())),
@@ -123,4 +106,7 @@ pub enum ParseError {
     UnsupportedElem(String),
     #[error("instruction is malformed or cannot be parsed in this context")]
     UnsupportedInstruction(String),
+    #[error("error from serde_json ({0})")]
+    SerdeJsonError(serde_json::Error),
 }
+

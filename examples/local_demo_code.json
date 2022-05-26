@@ -1,0 +1,99 @@
+{
+  "instructions": [
+    {
+      "Restack": {
+        "restack_depth": 1,
+        "restack_vec": []
+      }
+    },
+    {
+      "Restack": {
+        "restack_depth": 1,
+        "restack_vec": []
+      }
+    },
+    {
+      "UnpackJson": "Object"
+    },
+    {
+      "Push": {
+        "String": "queries"
+      }
+    },
+    "Lookup",
+    {
+      "UnpackJson": "Array"
+    },
+    {
+      "Push": {
+        "Number": 0
+      }
+    },
+    "Index",
+    {
+      "UnpackJson": "Object"
+    },
+    {
+      "Restack": {
+        "restack_depth": 1,
+        "restack_vec": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "Push": {
+        "String": "action"
+      }
+    },
+    "Lookup",
+    {
+      "UnpackJson": "String"
+    },
+    {
+      "Push": {
+        "String": "tokenbalance"
+      }
+    },
+    "StringEq",
+    "AssertTrue",
+    {
+      "Restack": {
+        "restack_depth": 1,
+        "restack_vec": []
+      }
+    },
+    {
+      "Restack": {
+        "restack_depth": 1,
+        "restack_vec": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "Push": {
+        "String": "contractaddress"
+      }
+    },
+    "Lookup",
+    {
+      "UnpackJson": "String"
+    },
+    {
+      "Push": {
+        "String": "0x57d90b64a1a57749b0f932f1a3395792e12e7055"
+      }
+    },
+    "StringEq",
+    "AssertTrue",
+    {
+      "Restack": {
+        "restack_depth": 1,
+        "restack_vec": []
+      }
+    }
+  ]
+}
