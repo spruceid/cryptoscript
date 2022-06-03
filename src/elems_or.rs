@@ -80,7 +80,7 @@ where
         match self {
             Self::Left(array) => IterOr::Left(
                 Singleton {
-                    array: array,
+                    array,
                 }.into_iter()
             ),
             Self::Right(xs) => IterOr::Right(xs.into_iter()),
@@ -98,8 +98,6 @@ where
     type N = N;
     type Tl = U;
 
-    // fn left(_s: PhantomData<Self>, x: GenericArray<Self::Hd, Self::N>) -> Self { Self::Left(x) }
-    // fn right(_s: PhantomData<Self>, x: Self::Tl) -> Self { Self::Right(x) }
     fn or<V, F: Fn(&GenericArray<Self::Hd, Self::N>) -> V, G: Fn(&Self::Tl) -> V>(&self, f: F, g: G) -> V {
         match self {
             Self::Left(x) => f(x),
@@ -132,8 +130,8 @@ where
             type_set: AnElem::elem_symbol(PhantomData::<T>),
             info: vec![],
         };
-        let elem_type_tl = Elems::elem_type(PhantomData::<U>)?;
-        Ok(elem_type_hd.union(elem_type_tl))
+        let mut elem_type_tl = Elems::elem_type(PhantomData::<U>)?;
+        Ok(elem_type_hd.union(&mut elem_type_tl))
     }
 }
 

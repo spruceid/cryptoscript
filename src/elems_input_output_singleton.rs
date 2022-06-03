@@ -98,7 +98,7 @@ where
             info: vec![],
         });
         Ok(Type {
-            context: context,
+            context,
             i_type: (1..num_inputs).into_iter().map(|_| type_id).collect(),
             o_type: vec![type_id],
         })

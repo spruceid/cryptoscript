@@ -187,7 +187,7 @@ impl Cli {
     }
 
     /// Run Cli::parse_and_run_result and print its result
-    pub async fn parse_and_run(&self) -> () {
+    pub async fn parse_and_run(&self) {
         match self.parse_and_run_result().await {
             Ok(()) => println!("successful!"),
             Err(e) => println!("failed:\n{}\n", e),
@@ -195,7 +195,7 @@ impl Cli {
     }
 
     /// Run a set of Cli arguments
-    pub async fn run(&self) -> () {
+    pub async fn run(&self) {
         match self.command {
             None => self.parse_and_run().await,
             Some(Commands::Parse) => {

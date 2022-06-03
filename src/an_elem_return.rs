@@ -10,6 +10,12 @@ pub struct Return<T: AnElem> {
     return_value: Arc<Mutex<Option<T>>>,
 }
 
+impl<T: AnElem> Default for Return<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: AnElem> Return<T> {
     /// New Return slot with nothing in it
     pub fn new() -> Self {

@@ -26,7 +26,8 @@ impl Arbitrary for ArbitraryNumber {
         } else {
             let x: f64 = Arbitrary::arbitrary(g);
             ArbitraryNumber { number:
-                Number::from_f64(x).unwrap_or(From::from(0u8))
+                Number::from_f64(x)
+                    .unwrap_or_else(|| From::from(0u8))
             }
         }
     }
@@ -51,7 +52,8 @@ impl Arbitrary for ArbitraryNumber {
             Some(self_f64) => Box::new(
                 self_f64.shrink()
                 .map(|x| ArbitraryNumber {
-                    number: Number::from_f64(x).unwrap_or(From::from(0u8)),
+                    number: Number::from_f64(x)
+                        .unwrap_or_else(|| From::from(0u8)),
                 })),
         }
     }

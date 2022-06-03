@@ -60,7 +60,7 @@ impl Instruction {
                     ElemSymbol::Array => Ok(Instr::Instr(Arc::new(UnpackJson { t: PhantomData::<Vec<Value>> }))),
                     ElemSymbol::Object => Ok(Instr::Instr(Arc::new(UnpackJson { t: PhantomData::<Map<String, Value>> }))),
                     _ => Err(InstructionError::UnpackJson {
-                        elem_symbol: elem_symbol,
+                        elem_symbol,
                     })
                 }
             },

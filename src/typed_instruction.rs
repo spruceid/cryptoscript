@@ -38,7 +38,7 @@ pub enum StackInstructionError {
     ElemsPopError(ElemsPopError),
 
     #[error("RawStackInstructionError:\n{0}")]
-    RawStackInstructionError(String),
+    RawStackInstructionErrorString(String),
 
     #[error("MissingOutput:\n{instruction}\n\n{stack_input}")]
     // TODO: more granular error typing
@@ -89,9 +89,9 @@ where
 
     fn stack_run(&self, stack: &mut Stack) -> Result<(), StackInstructionError> {
         let stack_input = &IsList::pop(PhantomData::<<T as IsInstructionT>::IO>, stack)
-            .map_err(|e| StackInstructionError::ElemsPopError(e))?;
+            .map_err(StackInstructionError::ElemsPopError)?;
         self.run(stack_input)
-            .map_err(|e| StackInstructionError::RawStackInstructionError(format!("{:?}", e)))?;
+            .map_err(|e| StackInstructionError::RawStackInstructionErrorString(format!("{:?}", e)))?;
         let output_value = stack_input
             .returning()
             .ok_or_else(|| StackInstructionError::MissingOutput {

@@ -109,8 +109,8 @@ impl QueryTemplate {
     pub fn to_query(self, variables: Arc<Map<String, Value>>, cache_location: Arc<PathBuf>) -> Query {
         Query {
             query_template: self,
-            variables: variables,
-            cache_location: cache_location,
+            variables,
+            cache_location,
         }
     }
 }
@@ -231,6 +231,11 @@ impl QueryTemplates {
     /// Number of queries
     pub fn len(&self) -> usize {
         self.queries.len()
+    }
+
+    /// Is number of queries empty?
+    pub fn is_empty(&self) -> bool {
+        self.queries.is_empty()
     }
 
     /// Run a list of QueryTemplate's, in series, and collect their results

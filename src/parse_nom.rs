@@ -414,7 +414,7 @@ impl InstructionsWriter {
 
         self.instructions.instructions.push(Instruction::Restack(Restack {
             restack_depth: restack_vec.len(),
-            restack_vec: restack_vec,
+            restack_vec,
         }));
 
         Ok(())
@@ -439,7 +439,7 @@ impl InstructionsWriter {
             .collect::<Result<Vec<StackIx>, SourceCodeError>>()?;
         self.instructions.instructions.push(Instruction::Restack(Restack {
             restack_depth: restack_vec.len(),
-            restack_vec: restack_vec,
+            restack_vec,
         }));
         Ok(())
     }
@@ -478,12 +478,12 @@ impl InstructionsWriter {
             ("string_to_bytes", None) => Ok(Instruction::StringToBytes),
             (_, Some(type_annotation)) =>
                 Err(SourceCodeError::VarToInstructionExtraAnnotation {
-                    function: function,
-                    type_annotation: type_annotation
+                    function,
+                    type_annotation
                 }),
             _ => Err(SourceCodeError::VarToInstructionUnknownFunction {
-                function: function,
-                opt_type_annotation: opt_type_annotation,
+                function,
+                opt_type_annotation,
             }),
         }
     }

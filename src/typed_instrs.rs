@@ -52,7 +52,7 @@ impl Instrs {
             }
         }
         println!("--------------------------------------------------------------------------------");
-        println!("");
+        println!();
         Ok(())
     }
 
@@ -95,7 +95,7 @@ impl Instrs {
             println!("{:?}\n", instr_or_restack);
             match instr_or_restack {
                 Instr::Instr(instr) => {
-                    println!("");
+                    println!();
                     stack.debug_type();
                     match instr.type_of() {
                         Ok(instr_type) => {
@@ -109,7 +109,7 @@ impl Instrs {
                         },
                         Err(e) => println!("instr type_of errror: {}\n", e),
                     }
-                    println!("");
+                    println!();
                     instr.stack_run(stack)?
                 },
                 Instr::Restack(restack) => {
@@ -126,12 +126,12 @@ impl Instrs {
     }
 
     /// Push an instruction that IsStackInstruction onto the list of instructions
-    pub fn instr(&mut self, instr: impl IsStackInstruction + 'static) -> () {
+    pub fn instr(&mut self, instr: impl IsStackInstruction + 'static) {
         self.instrs.push(Instr::Instr(Arc::new(instr)))
     }
 
     /// Push a Restack onto the list of instructions
-    pub fn restack(&mut self, restack: Restack) -> () {
+    pub fn restack(&mut self, restack: Restack) {
         self.instrs.push(Instr::Restack(restack))
     }
 }

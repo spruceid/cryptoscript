@@ -21,6 +21,12 @@ impl IntoIterator for Instructions {
     }
 }
 
+impl Default for Instructions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Instructions {
     /// New empty list of untyped instructions
     pub fn new() -> Self {
@@ -30,7 +36,7 @@ impl Instructions {
     }
 
     /// Push an Instruction onto the end of the list of instructions
-    pub fn push(&mut self, instruction: Instruction) -> () {
+    pub fn push(&mut self, instruction: Instruction) {
         self.instructions.push(instruction)
     }
 

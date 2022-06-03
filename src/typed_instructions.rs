@@ -59,12 +59,12 @@ impl IsInstructionT for Concat {
             ReturnOr::Left { array, returning } => {
                 let lhs = &array[0];
                 let rhs = &array[1];
-                returning.returning(lhs.into_iter().chain(rhs.into_iter()).cloned().collect());
+                returning.returning(lhs.iter().chain(rhs.iter()).cloned().collect());
             },
             ReturnOr::Right(ReturnOr::Left { array, returning }) => {
                 let lhs = &array[0];
                 let rhs = &array[1];
-                returning.returning(lhs.into_iter().chain(rhs.into_iter()).cloned().collect());
+                returning.returning(lhs.iter().chain(rhs.iter()).cloned().collect());
             },
             ReturnOr::Right(ReturnOr::Right(ReturnSingleton { singleton, returning })) => {
                 let lhs = &singleton.array[0];
@@ -237,10 +237,10 @@ impl IsInstructionT for Slice {
         match y.clone() {
             ReturnOr::Left { array, returning } => {
                 let iterable = &array[0];
-                if iterable.clone().into_iter().count() < u_offset_plus_length {
+                if iterable.clone().len() < u_offset_plus_length {
                     Err(())
                 } else {
-                    returning.returning(iterable.into_iter().skip(u_offset).take(u_length).copied().collect());
+                    returning.returning(iterable.iter().skip(u_offset).take(u_length).copied().collect());
                     Ok(())
                 }
             },
@@ -255,10 +255,10 @@ impl IsInstructionT for Slice {
             },
             ReturnOr::Right(ReturnOr::Right(ReturnOr::Left { array, returning })) => {
                 let iterable = &array[0];
-                if iterable.clone().into_iter().count() < u_offset_plus_length {
+                if iterable.clone().len() < u_offset_plus_length {
                     Err(())
                 } else {
-                    returning.returning(iterable.into_iter().skip(u_offset).take(u_length).cloned().collect());
+                    returning.returning(iterable.iter().skip(u_offset).take(u_length).cloned().collect());
                     Ok(())
                 }
             },
@@ -334,15 +334,13 @@ impl IsInstructionT for Index {
                 array[0]
                     .clone()
                     .into_iter()
-                    .skip(u_index)
-                    .next()
+                    .nth(u_index)
             },
             Or::Right(Singleton { array }) => {
                 array[0]
                     .clone()
                     .into_iter()
-                    .skip(u_index)
-                    .next()
+                    .nth(u_index)
                     .map(|(_x, y)| y)
             },
         }.ok_or_else(|| {
@@ -629,9 +627,9 @@ impl IsInstructionT for CheckLe {
         let lhs = array[0].clone();
         let rhs = array[1].clone();
         let cmp_result = lhs.partial_cmp(&rhs)
-            .ok_or_else(|| CheckLeError {
-                lhs: lhs,
-                rhs: rhs
+            .ok_or(CheckLeError {
+                lhs,
+                rhs
         })?;
         let result = match cmp_result {
             cmp::Ordering::Less => true,
@@ -676,9 +674,9 @@ impl IsInstructionT for CheckLt {
         let lhs = array[0].clone();
         let rhs = array[1].clone();
         let cmp_result = lhs.partial_cmp(&rhs)
-            .ok_or_else(|| CheckLtError {
-                lhs: lhs,
-                rhs: rhs
+            .ok_or(CheckLtError {
+                lhs,
+                rhs
         })?;
         let result = matches!(cmp_result, cmp::Ordering::Less);
         returning.returning(result);
@@ -720,9 +718,9 @@ impl IsInstructionT for CheckEq {
         let lhs = array[0].clone();
         let rhs = array[1].clone();
         let cmp_result = lhs.partial_cmp(&rhs)
-            .ok_or_else(|| CheckEqError {
-                lhs: lhs,
-                rhs: rhs
+            .ok_or(CheckEqError {
+                lhs,
+                rhs
         })?;
         let result = matches!(cmp_result, cmp::Ordering::Equal);
         returning.returning(result);

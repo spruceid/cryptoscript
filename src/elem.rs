@@ -112,11 +112,11 @@ pub enum ElemSymbol {
 impl Arbitrary for ElemSymbol {
     fn arbitrary(g: &mut Gen) -> Self {
         let choices: Vec<ElemSymbol> = EnumSet::all().iter().collect();
-        *g.choose(&choices).unwrap_or_else(|| &Self::Unit)
+        *g.choose(&choices).unwrap_or(&Self::Unit)
     }
 
     fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
-        let self_copy = self.clone();
+        let self_copy = *self;
         Box::new(EnumSet::all().iter().filter(move |&x| x < self_copy))
     }
 }
