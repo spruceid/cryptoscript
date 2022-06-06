@@ -43,6 +43,18 @@ pub struct SourceCode<T> {
     blocks: Vec<SourceBlock<T>>,
 }
 
+impl SourceCode<String> {
+    /// Parse all of the String's to Elem's
+    pub fn parse_elems(&self) -> Result<SourceCode<Elem>, SourceCodeError> {
+        Ok(SourceCode {
+            blocks: self.blocks
+                .iter()
+                .map(|block| block.parse_elems())
+                .collect::<Result<Vec<SourceBlock<Elem>>, SourceCodeError>>()?,
+        })
+    }
+}
+
 /// A single block of parsed source code
 #[derive(Debug, Clone, PartialEq)]
 pub enum SourceBlock<T> {
@@ -53,6 +65,16 @@ pub enum SourceBlock<T> {
     Assignment(Assignment<T>),
 }
 
+impl SourceBlock<String> {
+    /// Parse all of the String's to Elem's
+    pub fn parse_elems(&self) -> Result<SourceBlock<Elem>, SourceCodeError> {
+        match self {
+            Self::Comment(comment) => Ok(SourceBlock::Comment(comment.to_string())),
+            Self::Assignment(assignment) => Ok(SourceBlock::Assignment(assignment.parse_elems()?)),
+        }
+    }
+}
+
 /// A single assignment: assignments are "simple," i.e. no pattern matching, etc
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment<T> {
@@ -61,6 +83,16 @@ pub struct Assignment<T> {
 
     /// Expression assigned
     app: App<T>,
+}
+
+impl Assignment<String> {
+    /// Parse all of the String's to Elem's
+    pub fn parse_elems(&self) -> Result<Assignment<Elem>, SourceCodeError> {
+        Ok(Assignment {
+            var: self.var.clone(),
+            app: self.app.parse_elems()?,
+        })
+    }
 }
 
 /// An application of a function to a Vec of arguments
@@ -76,6 +108,20 @@ pub struct App<T> {
     args: Vec<Expr<T>>,
 }
 
+impl App<String> {
+    /// Parse all of the String's to Elem's
+    pub fn parse_elems(&self) -> Result<App<Elem>, SourceCodeError> {
+        Ok(App {
+            function: self.function.clone(),
+            type_annotation: self.type_annotation.clone(),
+            args: self.args
+                .iter()
+                .map(|block| block.parse_elems())
+                .collect::<Result<Vec<Expr<Elem>>, SourceCodeError>>()?,
+        })
+    }
+}
+
 /// Parsed expression
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr<T> {
@@ -89,6 +135,24 @@ pub enum Expr<T> {
     /// Variable
     Var(Var),
 }
+
+impl Expr<String> {
+    /// Parse all of the String's to Elem's
+    pub fn parse_elems(&self) -> Result<Expr<Elem>, SourceCodeError> {
+        match self {
+            Self::App(app) => Ok(Expr::App(app.parse_elems()?)),
+            Self::Lit(lit) => {
+                Ok(Expr::Lit(serde_json::from_str(lit)
+                             .map_err(|e| SourceCodeError::SerdeJsonError {
+                                 error: format!("{}", e),
+                                 lit: lit.to_string(),
+                                })?))
+            },
+            Self::Var(var) => Ok(Expr::Var(var.to_string())),
+        }
+    }
+}
+
 
 // TODO: support '!' ending variables?
 //
@@ -585,7 +649,7 @@ impl SourceCode<Elem> {
 }
 
 /// Source code errors
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SourceCodeError {
     // var not found in context
     InstructionsWriterGetVar {
@@ -616,6 +680,18 @@ pub enum SourceCodeError {
     /// "Instruction failed: \n{0:?}\n"
     // #[error("Instruction failed: \n{0:?}\n")]
     InstructionError(InstructionError),
+
+
+    /// "Instruction failed: \n{0:?}\n"
+    // #[error("Instruction failed: \n{0:?}\n")]
+    SerdeJsonError {
+        error: String,
+        lit: String
+    },
+
+    /// "Instruction failed: \n{0:?}\n"
+    // #[error("Instruction failed: \n{0:?}\n")]
+    NestedNomError(String),
 }
 
 impl From<ElemsPopError> for SourceCodeError {
@@ -629,4 +705,65 @@ impl From<InstructionError> for SourceCodeError {
         Self::InstructionError(error)
     }
 }
+
+// impl From<serde_json::Error> for SourceCodeError {
+//     fn from(error: serde_json::Error) -> Self {
+//         Self::SerdeJsonError(format!("{}", error))
+//     }
+// }
+
+impl From<nom::Err<nom::error::Error<&str>>> for SourceCodeError {
+    fn from(error: nom::Err<nom::error::Error<&str>>) -> Self {
+        Self::NestedNomError(format!("{}", error))
+    }
+}
+
+#[cfg(test)]
+mod test_parse_source_code_to_instructions {
+    use super::*;
+
+    #[test]
+    fn test_source_code_demo_to_instructions() {
+        let test_code_str = r#"
+            input_json = unpack_json(INPUT)
+
+            queries = unpack_json(lookup("queries", input_json))
+            first_query = unpack_json(index("0", queries))
+
+            _ = assert(check_eq(unpack_json(lookup("action", first_query)), "tokenbalance"))
+            _ = assert(check_eq(unpack_json(lookup("contractaddress", first_query)), "0x57d90b64a1a57749b0f932f1a3395792e12e7055"))
+            _ = assert(check_eq(unpack_json(lookup("result"), unpack_json(lookup("response", first_query))), "135499"))
+
+            prompts = unpack_json(lookup("prompts", input_json))
+            first_prompt = unpack_json(lookup("0", prompts))
+
+            _ = assert(check_eq(unpack_json(lookup("action", first_prompt)), "siwe"))
+            _ = assert(check_eq(unpack_json(lookup("version", first_prompt)), "1.1.0"))
+            _ = assert(check_eq(unpack_json(lookup("address", unpack_json(lookup("fields", unpack_json(lookup("data", first_prompt)))))), "0xe04f27eb70e025b78871a2ad7eabe85e61212761"))
+
+            message_hash = hash_sha256(string_to_bytes(unpack_json(lookup("message", unpack_json(lookup("data", first_prompt))))))
+            address_hash = hash_sha256(string_to_bytes(unpack_json(lookup("address", unpack_json(lookup("fields", unpack_json(lookup("data", first_prompt))))))))
+
+            // # Hex vs list of bytes? Infix?
+            // # assert!(hash_sha256(concat(message_hash, address_hash)) == [53,163,178,139,122,187,171,47,42,135,175,176,240,11,10,152,228,238,106,205,132,68,80,79,188,54,124,242,97,132,31,139])
+            // # assert!(hash_sha256(concat(message_hash, address_hash)) == 0x35a3b28b7abbab2f2a87afb0f00b0a98e4ee6acd8444504fbc367cf261841f8b)
+            _ = assert(check_eq(hash_sha256(concat(message_hash, address_hash)), "0x35a3b28b7abbab2f2a87afb0f00b0a98e4ee6acd8444504fbc367cf261841f8b"))
+        "#;
+
+        let result : Result<(&str, Instructions), SourceCodeError> =
+            parse_nom(&test_code_str)
+                .map_err(|e| From::from(e))
+                .and_then(|(i, o)| {
+                    Ok((i, o.parse_elems()?.to_instructions()?))
+                 });
+
+        assert_eq!(result,
+                   // Ok(("", SourceCode { blocks: vec![] }))
+                   Ok(("", Instructions::new()))
+
+        )
+
+    }
+}
+
 

@@ -28,7 +28,7 @@ pub enum Instruction {
     StringToBytes,
 }
 
-#[derive(Clone, Copy, Debug, Error)]
+#[derive(Clone, Copy, Debug, Error, PartialEq)]
 pub enum InstructionError {
     #[error("Instruction::to_instr UnpackJson does not support: {elem_symbol:?}")]
     UnpackJson {

@@ -112,7 +112,7 @@ impl Stack {
 
 
 /// Stack errors
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq)]
 pub enum StackError {
     /// Stack::pop: tried to pop from an empty stack
     #[error("Stack::pop: tried to pop from an empty stack")]
