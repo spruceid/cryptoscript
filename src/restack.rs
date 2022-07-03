@@ -109,7 +109,10 @@ impl Restack {
         if self.restack_depth <= stack.len() {
             let result = self.restack_vec.iter().map(|&restack_index|
                 match stack.get(restack_index) {
-                    None => Err(RestackError::StackIndexInvalid{ restack_index: restack_index, restack_depth: self.restack_depth, }),
+                    None => Err(RestackError::StackIndexInvalid{
+                        restack_index,
+                        restack_depth: self.restack_depth,
+                    }),
                     Some(stack_element) => Ok( stack_element.clone() ),
                 }
             ).collect::<Result<Vec<T>, RestackError>>();
@@ -148,7 +151,7 @@ impl Restack {
             restack_vec: self.restack_vec.iter().map(|&restack_index|
                 match other.restack_vec.get(restack_index) {
                     None => restack_index,
-                    Some(stack_index) => stack_index.clone(),
+                    Some(stack_index) => *stack_index,
                 }
             ).collect()
         }

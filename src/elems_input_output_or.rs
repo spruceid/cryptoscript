@@ -79,7 +79,7 @@ where
             .map(|x| {
                 match x {
                     Or::Left(array) => Self::Left {
-                        array: array,
+                        array,
                         returning: Return::new(),
                     },
                     Or::Right(y) => Self::Right(y),
@@ -125,13 +125,13 @@ where
         let mut type_tl = IOElems::type_of(PhantomData::<U>)
             .map_err(|e| ElemsPopError::ReturnOrTl(Arc::new(e)))?;
         let last_type_id = type_tl.context.max_type_id()
-            .map_err(|e| ElemsPopError::ReturnOrContextError(e))?;
+            .map_err(ElemsPopError::ReturnOrContextError)?;
         let next_type_id = type_tl.context.push(ElemType {
             type_set: AnElem::elem_symbol(PhantomData::<T>),
             info: vec![],
         });
         type_tl.context.unify(last_type_id, next_type_id)
-            .map_err(|e| ElemsPopError::ReturnOrContextError(e))?;
+            .map_err(ElemsPopError::ReturnOrContextError)?;
         Ok(type_tl)
     }
 }

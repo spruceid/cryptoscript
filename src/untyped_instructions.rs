@@ -21,7 +21,25 @@ impl IntoIterator for Instructions {
     }
 }
 
+impl Default for Instructions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Instructions {
+    /// New empty list of untyped instructions
+    pub fn new() -> Self {
+        Instructions {
+            instructions: vec![],
+        }
+    }
+
+    /// Push an Instruction onto the end of the list of instructions
+    pub fn push(&mut self, instruction: Instruction) {
+        self.instructions.push(instruction)
+    }
+
     /// Convert to a list of typed instructions
     pub fn to_instrs(self) -> Result<Instrs, InstructionError> {
         Ok(Instrs {

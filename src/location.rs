@@ -10,7 +10,7 @@ pub struct LineNo {
 impl From<usize> for LineNo {
     fn from(line_no: usize) -> Self {
         LineNo {
-            line_no: line_no,
+            line_no,
         }
     }
 }
@@ -35,7 +35,7 @@ impl LineNo {
     pub fn in_at(&self, argument_index: usize) -> Location {
         Location {
             line_no: *self,
-            argument_index: argument_index,
+            argument_index,
             is_input: true,
         }
     }
@@ -47,7 +47,7 @@ impl LineNo {
     pub fn out_at(&self, argument_index: usize) -> Location {
         Location {
             line_no: *self,
-            argument_index: argument_index,
+            argument_index,
             is_input: false,
         }
     }

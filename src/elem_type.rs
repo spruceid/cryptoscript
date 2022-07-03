@@ -51,10 +51,10 @@ impl Display for ElemType {
                .fold(String::new(),
                      |memo, x| {
                          let x_str: &'static str = From::from(x);
-                         if memo == "" {
+                         if memo.is_empty() {
                             x_str.to_string()
                          } else {
-                            memo + ", " + &x_str.to_string()
+                            memo + ", " + x_str
                          }
                     }
                ))
@@ -101,7 +101,7 @@ impl ElemSymbol {
             info: locations.iter()
                 .map(|&location|
                      ElemTypeInfo {
-                         location: location,
+                         location,
                     }).collect(),
         }
     }
@@ -119,11 +119,11 @@ impl ElemType {
     pub fn from_locations(type_set: EnumSet<ElemSymbol>,
                           locations: Vec<Location>) -> Self {
         ElemType {
-            type_set: type_set,
+            type_set,
             info: locations.iter()
                 .map(|&location|
                      ElemTypeInfo {
-                         location: location,
+                         location,
                     }).collect(),
         }
     }
@@ -136,10 +136,10 @@ impl ElemType {
     }
 
     /// Calculate the union of two ElemType's and append their metadata
-    pub fn union(&self, other: Self) -> Self {
+    pub fn union(&self, other: &mut Self) -> Self {
         let both = self.type_set.union(other.type_set);
         let mut both_info = self.info.clone();
-        both_info.append(&mut other.info.clone());
+        both_info.append(&mut other.info);
         ElemType {
             type_set: both,
             info: both_info,
@@ -149,7 +149,7 @@ impl ElemType {
     /// Unify two ElemType's by returning their intersection and combining their metadata
     ///
     /// Fails if their intersection is empty (i.e. if it results in an empty type)
-    pub fn unify(&self, other: Self) -> Result<Self, ElemTypeError> {
+    pub fn unify(&self, other: &mut Self) -> Result<Self, ElemTypeError> {
         let both = self.type_set.intersection(other.type_set);
         if both.is_empty() {
             Err(ElemTypeError::UnifyEmpty {
@@ -158,7 +158,7 @@ impl ElemType {
             })
         } else {
             let mut both_info = self.info.clone();
-            both_info.append(&mut other.info.clone());
+            both_info.append(&mut other.info);
             Ok(ElemType {
                 type_set: both,
                 info: both_info,
@@ -239,13 +239,18 @@ impl StackType {
         self.types.len()
     }
 
+    /// Is length of the StackType empty?
+    pub fn is_empty(&self) -> bool {
+        self.types.is_empty()
+    }
+
     /// Push the given ElemType to the StackType
-    pub fn push(&mut self, elem_type: ElemType) -> () {
+    pub fn push(&mut self, elem_type: ElemType) {
         self.types.insert(0, elem_type)
     }
 
     /// Push (count) copies of the given ElemType to the StackType
-    pub fn push_n(&mut self, elem_type: ElemType, count: usize) -> () {
+    pub fn push_n(&mut self, elem_type: ElemType, count: usize) {
         for _index in 0..count {
             self.push(elem_type.clone())
         }

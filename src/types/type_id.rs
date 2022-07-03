@@ -20,7 +20,7 @@ impl TypeId {
     /// New TypeId with the given ID
     pub fn new(type_id: usize) -> Self {
         Self {
-            type_id: type_id,
+            type_id,
         }
     }
 
@@ -32,7 +32,7 @@ impl TypeId {
     /// Subtract one or return None if 0
     pub fn previous(&self) -> Option<Self> {
         self.type_id.checked_sub(1).map(|type_id| Self {
-            type_id: type_id,
+            type_id,
         })
     }
 

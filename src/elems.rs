@@ -18,7 +18,7 @@ use thiserror::Error;
 // - random typed program?
 
 /// Errors thrown by Elems::pop
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq)]
 pub enum ElemsPopError {
     /// "Elems::pop singleton: tried to pop an Elem that was not found:\nelem_symbol:\n{elem_symbol:?}\n\n{error}"
     #[error("Elems::pop singleton: tried to pop an Elem that was not found:\nelem_symbol:\n{elem_symbol:?}\n\n{error}")]

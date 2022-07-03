@@ -70,7 +70,7 @@ where
             }
         })?;
         Ok(Singleton {
-            array: array,
+            array,
         })
     }
 

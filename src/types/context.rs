@@ -47,7 +47,7 @@ impl Display for Context {
               .fold(String::new(), |memo, (i, xs)| {
                 memo +
                 "\n" +
-                &format!("∀ ({t_i} ∊ {xs}),", t_i = i.debug(), xs = xs).to_string()
+                &format!("∀ ({t_i} ∊ {xs}),", t_i = i.debug(), xs = xs)
               }))
     }
 }
@@ -75,6 +75,12 @@ mod context_display_tests {
             context.push(elem_type.clone());
             assert_eq!(format!("\n∀ (t0 ∊ {}),", elem_type), format!("{}", context));
         }
+    }
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -117,7 +123,7 @@ impl Context {
         for &type_id in &basis {
             match source.context.remove(&type_id) {
                 None => Err(ContextError::NormalizeOnInvalidBasis {
-                    type_id: type_id,
+                    type_id,
                     context: self.clone(),
                     basis: basis.clone().into_iter().collect(),
                 }),
@@ -148,15 +154,15 @@ impl Context {
             Ok(())
         } else {
             Err(ContextError::UpdateTypeIdFromMissing {
-                from: from,
-                to: to,
+                from,
+                to,
                 context: self.clone(),
             })
         }?;
         if self.context.contains_key(&to) {
             Err(ContextError::UpdateTypeIdToPresent {
-                from: from,
-                to: to,
+                from,
+                to,
                 context: self.clone(),
             })
         } else {
@@ -175,9 +181,9 @@ impl Context {
                     Ok(())
                 },
                 Some(conflicting_elem_type) => Err(ContextError::DisjointUnion {
-                    type_id: type_id,
+                    type_id,
                     elem_type: elem_type.clone(),
-                    conflicting_elem_type: conflicting_elem_type,
+                    conflicting_elem_type,
                     lhs: self.clone(),
                     rhs: other.clone(),
                 }),
@@ -201,22 +207,22 @@ impl Context {
     pub fn unify(&mut self, xi: TypeId, yi: TypeId) -> Result<(), ContextError> {
         let x_type = self.context.remove(&xi).ok_or_else(|| ContextError::Unify {
             xs: self.clone(),
-            xi: xi.clone(),
-            yi: yi.clone(),
+            xi,
+            yi,
             is_lhs: true,
         })?;
-        let y_type = self.context.remove(&yi).ok_or_else(|| ContextError::Unify {
+        let mut y_type = self.context.remove(&yi).ok_or_else(|| ContextError::Unify {
             xs: self.clone(),
-            xi: xi.clone(),
-            yi: yi.clone(),
+            xi,
+            yi,
             is_lhs: false,
         })?;
-        let xy_type = x_type.unify(y_type).or_else(|e| Err(ContextError::UnifyElemType {
+        let xy_type = x_type.unify(&mut y_type).map_err(|error| ContextError::UnifyElemType {
             xs: self.clone(),
-            xi: xi.clone(),
-            yi: yi.clone(),
-            error: e,
-        }))?;
+            xi,
+            yi,
+            error,
+        })?;
         self.context.insert(yi, xy_type);
         Ok(())
     }

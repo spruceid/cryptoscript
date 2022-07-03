@@ -32,6 +32,11 @@ impl Display for Stack {
     }
 }
 
+impl Default for Stack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Stack {
     /// New empty Stack
@@ -45,9 +50,9 @@ impl Stack {
     // (so we know what we were expecting)
     /// Pop an Elem from the stack (remove 0th element)
     pub fn pop(&mut self) -> Result<Elem, StackError> {
-        let result = self.stack.get(0).ok_or_else(|| StackError::EmptyStack).map(|x|x.clone())?;
+        let result = self.stack.get(0).ok_or(StackError::EmptyStack).map(|x|x.clone())?;
         self.stack = self.stack.drain(1..).collect();
-        Ok(result.clone())
+        Ok(result)
     }
 
     /// Pop AnElem from the stack (remove 0th element)
@@ -78,7 +83,7 @@ impl Stack {
             let hd_elem = self.pop()?;
             xs.push(AnElem::from_elem(PhantomData::<T>, hd_elem)?)
         }
-        GenericArray::from_exact_iter(xs).ok_or_else(|| StackError::PopGenericArray)
+        GenericArray::from_exact_iter(xs).ok_or(StackError::PopGenericArray)
     }
 
     /// Type of the Stack's elements
@@ -89,7 +94,7 @@ impl Stack {
     }
 
     /// Debug a Stack's type
-    pub fn debug_type(&self) -> () {
+    pub fn debug_type(&self) {
         println!("stack type:\n{}", self.type_of())
     }
 
@@ -107,7 +112,7 @@ impl Stack {
 
 
 /// Stack errors
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq)]
 pub enum StackError {
     /// Stack::pop: tried to pop from an empty stack
     #[error("Stack::pop: tried to pop from an empty stack")]

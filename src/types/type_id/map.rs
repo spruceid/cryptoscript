@@ -13,6 +13,12 @@ pub struct TypeIdMap {
     map: BTreeMap<TypeId, TypeId>,
 }
 
+impl Default for TypeIdMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypeIdMap {
     /// New empty TypeIdMap
     pub fn new() -> Self {
@@ -24,15 +30,15 @@ impl TypeIdMap {
     /// Add a mapping to the TypeIdMap, failing if the "from" TypeId" already
     /// exists in the map
     pub fn push(&mut self, from: TypeId, to: TypeId) -> Result<(), TypeIdMapError> {
-        if self.map.contains_key(&from) {
+        if let std::collections::btree_map::Entry::Vacant(e) = self.map.entry(from) {
+            e.insert(to);
+            Ok(())
+        } else {
             Err(TypeIdMapError::PushExists {
-                from: from,
-                to: to,
+                from,
+                to,
                 map: self.clone(),
             })
-        } else {
-            self.map.insert(from, to);
-            Ok(())
         }
     }
 
@@ -40,15 +46,15 @@ impl TypeIdMap {
     pub fn get(&self, index: &TypeId, location: usize) -> Result<&TypeId, TypeIdMapError> {
         self.map.get(index)
             .ok_or_else(|| TypeIdMapError::GetUnknownTypeId {
-                index: index.clone(),
-                location: location,
+                index: *index,
+                location,
                 type_map: self.clone(),
             })
     }
 
     /// Resolve the map on a Vec of TypeId's
     pub fn run(&self, type_vars: Vec<TypeId>) -> Result<Vec<TypeId>, TypeIdMapError> {
-        type_vars.iter().enumerate().map(|(i, x)| Ok(self.get(x, i)?.clone())).collect()
+        type_vars.iter().enumerate().map(|(i, x)| Ok(*self.get(x, i)?)).collect()
     }
 }
 

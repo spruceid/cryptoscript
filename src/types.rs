@@ -73,7 +73,7 @@ impl Type {
 
     /// Update a TypeId, failing if "from" isn't present or "to" already is
     pub fn update_type_id(&mut self, from: TypeId, to: TypeId) -> Result<(), TypeError> {
-        self.context.update_type_id(from, to).map_err(|e| TypeError::UpdateTypeId(e))?;
+        self.context.update_type_id(from, to).map_err(TypeError::UpdateTypeId)?;
         self.i_type = self.i_type.iter().map(|x| x.update_type_id(from, to)).collect();
         self.o_type = self.o_type.iter().map(|x| x.update_type_id(from, to)).collect();
         Ok(())
@@ -84,11 +84,13 @@ impl Type {
         let mut basis = self.i_type.clone();
         basis.append(&mut self.o_type.clone());
         basis.dedup();
-        let (new_context, type_map) = self.context.normalize_on(basis).map_err(|e| TypeError::NormalizeContextError(e))?;
+        let (new_context, type_map) = self.context
+            .normalize_on(basis)
+            .map_err(TypeError::NormalizeContextError)?;
         Ok(Type {
             context: new_context,
-            i_type: type_map.run(self.i_type.clone()).map_err(|e| TypeError::TypeIdMapError(e))?,
-            o_type: type_map.run(self.o_type.clone()).map_err(|e| TypeError::TypeIdMapError(e))?,
+            i_type: type_map.run(self.i_type.clone()).map_err(TypeError::TypeIdMapError)?,
+            o_type: type_map.run(self.o_type.clone()).map_err(TypeError::TypeIdMapError)?,
         })
     }
 
@@ -103,7 +105,7 @@ impl Type {
                 // TODO: elimate copy?
                 let elem_type_copy = elem_type.clone();
                 self.context.unify_elem_type(type_id, elem_type).map_err(|e| TypeError::Specialization {
-                    type_id: type_id,
+                    type_id,
                     elem_type: elem_type_copy,
                     context: self.context.clone(),
                     error: e,
@@ -122,13 +124,13 @@ impl Type {
                         stack_type: stack_type.clone(),
                     })
                 }).collect::<Result<Vec<ElemType>, ContextError>>()
-                       .map_err(|e| TypeError::SpecializeToInputStackContextError(e))?,
+                       .map_err(TypeError::SpecializeToInputStackContextError)?,
             })
 
         } else {
             Err(TypeError::SpecializeToInputStack {
                 type_of: self.clone(),
-                stack_type: stack_type.clone(),
+                stack_type,
             })
         }
     }
@@ -150,7 +152,7 @@ impl Type {
     /// 2. collect the remainder and add them to the context
     /// 3. add the remainder to (self.i_type, other.o_type), with replaced variables
     pub fn compose(&self, other: Self) -> Result<Self, TypeError> {
-        println!("");
+        println!();
         println!("composing:\n{0}\n\nAND\n{1}\n", self, other);
 
         let mut context = self.context.clone();
@@ -161,7 +163,7 @@ impl Type {
         // println!("offset_other: {}", offset_other);
 
         context.disjoint_union(offset_other.context.clone())
-            .map_err(|e| TypeError::ComposeContextError(e))?;
+            .map_err(TypeError::ComposeContextError)?;
         // println!("context union: {}", context);
 
         let mut mut_offset_other = offset_other.clone();
@@ -172,21 +174,21 @@ impl Type {
             zip_len += 1;
             context
                 .unify(o_type, i_type)
-                .map_err(|e| TypeError::ComposeContextError(e))?;
+                .map_err(TypeError::ComposeContextError)?;
             mut_offset_other
                 .update_type_id(o_type, i_type)?;
             Ok(())
         })?;
 
         Ok(Type {
-            context: context,
+            context,
             i_type: mut_offset_other.i_type.iter().chain(self.i_type.iter().skip(zip_len)).copied().collect(),
             o_type: self.o_type.iter().chain(mut_offset_other.o_type.iter().skip(zip_len)).copied().collect(),
         })
     }
 
     /// Prepend inputs to self.i_type
-    pub fn prepend_inputs(&mut self, num_copies: usize, elem_type: ElemType) -> () {
+    pub fn prepend_inputs(&mut self, num_copies: usize, elem_type: ElemType) {
         if 0 < num_copies {
             let type_id = self.context.push(elem_type);
             self.i_type = (1..num_copies).into_iter()
@@ -197,7 +199,7 @@ impl Type {
     }
 
     /// Append inputs to self.i_type
-    pub fn append_inputs<T>(&mut self, elem_types: T) -> ()
+    pub fn append_inputs<T>(&mut self, elem_types: T)
     where
         T: IntoIterator<Item = ElemType>,
     {
@@ -226,14 +228,14 @@ impl Type {
 // ```
 //
 // Results in:
-//
+// ```
 // ∀ (t0 ∊ {A, B, C}),
 // ∀ (t1 ∊ {B, C}),
 // ..
 // ∀ (tN ∊ {D, E, F}),
 // [t0, t1, .., tN] ->
 // [ti, tj, .., tk]
-//
+// ```
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         // TODO: fix normalize
@@ -244,14 +246,14 @@ impl Display for Type {
                context = self_normalized.context,
                i_type = self_normalized.i_type.iter().fold(String::new(), |memo, x| {
                    let x_str = x.debug();
-                   if memo == "" {
+                   if memo.is_empty() {
                        x_str
                    } else {
                        memo + ", " + &x_str
                    }}),
                o_type = self_normalized.o_type.iter().fold(String::new(), |memo, x| {
                    let x_str = x.debug();
-                   if memo == "" {
+                   if memo.is_empty() {
                        x_str
                    } else {
                        memo + ", " + &x_str
@@ -365,8 +367,8 @@ impl Restack {
         let i_type = restack_type.clone();
         self.run(&mut restack_type)?;
         Ok(Type {
-            context: context,
-            i_type: i_type,
+            context,
+            i_type,
             o_type: restack_type,
         })
     }

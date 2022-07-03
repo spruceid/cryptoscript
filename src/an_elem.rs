@@ -210,7 +210,7 @@ impl AnElem for Value {
 
 
 /// AnElem::from_elem errors
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq)]
 pub enum AnElemError {
     /// AnElem::from_elem: element popped from the Stack wasn't the expected type
     #[error("AnElem::from_elem: element popped from the stack\n\n{found}\n\nwasn't the expected type:\n{expected:?}")]

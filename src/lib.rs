@@ -2,8 +2,9 @@
 //! Cryptoscript Rust Library
 //! See cli for the command line interface
 
-#![warn(missing_docs, elided_lifetimes_in_paths, explicit_outlives_requirements, keyword_idents, missing_copy_implementations, missing_debug_implementations, non_ascii_idents, noop_method_call, single_use_lifetimes, trivial_casts, trivial_numeric_casts, unreachable_pub, unused_extern_crates, unused_import_braces, unused_lifetimes, unused_qualifications)]
+#![warn(missing_docs, elided_lifetimes_in_paths, explicit_outlives_requirements, keyword_idents, missing_copy_implementations, missing_debug_implementations, non_ascii_idents, noop_method_call, trivial_casts, trivial_numeric_casts, unreachable_pub, unused_extern_crates, unused_import_braces, unused_lifetimes, unused_qualifications)]
 
+// single_use_lifetimes, 
 // #![warn(unused_crate_dependencies)]
 // #![warn(unused_results)]
 
@@ -80,6 +81,11 @@ pub use typed_instrs::Instrs;
 mod parse;
 pub use parse::{parse, parse_json};
 
+mod parse_utils;
+pub use parse_utils::{parse_string, whitespace_delimited};
+mod parse_nom;
+pub use parse_nom::{parse_nom, SourceCode, SourceBlock, Comment, Var, Assignment, App, Expr, TypeAnnotation, InstructionsWriter};
+
 mod rest_api;
 pub use rest_api::Api;
 mod cli;
@@ -142,7 +148,7 @@ fn sha256(input: &Vec<u8>) -> Vec<u8> {
 
     // read hash digest and consume hasher
     let result = hasher.finalize();
-    return result.to_vec();
+    result.to_vec()
 }
 
 #[cfg(test)]

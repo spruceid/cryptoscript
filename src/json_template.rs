@@ -9,10 +9,17 @@ use indexmap::IndexMap;
 use serde_json::{Map, Number, Value};
 use thiserror::Error;
 
+// TODO: relocate
 /// Map<String, T> defined to be convenient to Serialize and Deserialize
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TMap<T> {
     map: IndexMap<String, T>,
+}
+
+impl<T> Default for TMap<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T> TMap<T> {
@@ -78,7 +85,7 @@ where
         }
 
         Ok(TMap {
-            map: map,
+            map,
         })
     }
 }
@@ -138,7 +145,7 @@ impl TValue {
             Value::Bool(x) => Self::Bool(x),
             Value::Number(x) => Self::Number(x),
             Value::String(x) => Self::String(x),
-            Value::Array(x) => Self::Array(x.into_iter().map(|x| TValue::from_json(x)).collect()),
+            Value::Array(x) => Self::Array(x.into_iter().map(TValue::from_json).collect()),
             Value::Object(x) => Self::Object(TMap {
                 map: x.into_iter().map(|(x, y)| (x, TValue::from_json(y))).collect()
             }),
@@ -164,13 +171,13 @@ impl TValue {
             Self::String(x) => Ok(Value::String(x)),
             Self::Array(x) => Ok(Value::Array(x.into_iter().map(|y| y.run(variables.clone())).collect::<Result<Vec<Value>, TValueRunError>>()?)),
             Self::Object(x) => Ok(Value::Object(x.map.into_iter().map(|(y, z)| Ok((y, z.run(variables.clone())?))).collect::<Result<Map<String, Value>, TValueRunError>>()?)),
-            Self::Var(x) => {
-                variables.get(&x)
-                    .map(|y| y.clone())
+            Self::Var(variable) => {
+                variables.get(&variable)
+                    .cloned()
                     .ok_or_else(|| TValueRunError {
-                    variable: x,
+                    variable,
                     value: vec![self_copy],
-                    variables: variables,
+                    variables,
                 })
             },
         }
@@ -198,12 +205,12 @@ impl Template {
     pub fn new(template: TValue) -> Self {
         Self {
             variables: Map::new(),
-            template: template,
+            template,
         }
     }
 
     /// Set the given variable name to the given Value
-    pub fn set(&mut self, name: String, value: Value) -> () {
+    pub fn set(&mut self, name: String, value: Value) {
         self.variables.insert(name, value);
     }
 
