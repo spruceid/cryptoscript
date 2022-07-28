@@ -1,12 +1,15 @@
-use crate::arbitrary::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
+#[cfg(test)]
+use crate::arbitrary::test_arbitrary_defs::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
+#[cfg(test)]
+use quickcheck::{empty_shrinker, Arbitrary, Gen};
+#[cfg(test)]
+use enumset::EnumSet;
 
 use std::cmp;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
-use std::iter::IntoIterator;
 
-use enumset::{EnumSet, EnumSetType};
-use quickcheck::{empty_shrinker, Arbitrary, Gen};
+use enumset::EnumSetType;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
@@ -109,6 +112,7 @@ pub enum ElemSymbol {
     Json,
 }
 
+#[cfg(test)]
 impl Arbitrary for ElemSymbol {
     fn arbitrary(g: &mut Gen) -> Self {
         let choices: Vec<ElemSymbol> = EnumSet::all().iter().collect();
@@ -121,6 +125,7 @@ impl Arbitrary for ElemSymbol {
     }
 }
 
+#[cfg(test)]
 impl ElemSymbol {
     /// Given a Gen, use this ElemSymbol as a template of an Elem, and fill it
     /// with Arbitrary contents.
@@ -152,6 +157,7 @@ impl ElemSymbol {
     }
 }
 
+#[cfg(test)]
 impl Arbitrary for Elem {
     fn arbitrary(g: &mut Gen) -> Self {
         let symbol: ElemSymbol = Arbitrary::arbitrary(g);

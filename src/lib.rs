@@ -12,8 +12,12 @@
 
 mod restack;
 pub use restack::{Restack, StackIx};
+
 mod arbitrary;
-pub use arbitrary::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
+#[cfg(test)]
+pub use arbitrary::test_arbitrary_defs;
+#[cfg(test)]
+pub use arbitrary::test_arbitrary_defs::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
 mod elem;
 pub use elem::{Elem, ElemSymbol};
 mod elem_type;

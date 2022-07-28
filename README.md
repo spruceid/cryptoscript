@@ -86,6 +86,26 @@ There are two demos:
 - Etherscan: this demo requires a free Etherscan API key, which you can get
   [here](https://docs.etherscan.io/getting-started/viewing-api-usage-statistics)
 
+### Building
+
+To build the `rest-api`:
+
+```bash
+cargo b --bin rest-api --features build-bin
+```
+
+To build the cryptoscript interpreter:
+
+```bash
+cargo b --bin cryptoscript --features build-bin
+```
+
+Building for the WASM target:
+
+```bash
+wasm-pack build --target web --no-default-features --features build-wasm
+```
+
 ### Local Demo
 
 The local demo requires running a tiny test server, which can be started with the following command:
