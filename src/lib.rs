@@ -90,9 +90,14 @@ pub use parse_utils::{parse_string, whitespace_delimited};
 mod parse_nom;
 pub use parse_nom::{parse_nom, SourceCode, SourceBlock, Comment, Var, Assignment, App, Expr, TypeAnnotation, InstructionsWriter};
 
+#[cfg(feature = "build-bin")]
 mod rest_api;
+#[cfg(feature = "build-bin")]
 pub use rest_api::Api;
+
+#[cfg(feature = "build-bin")]
 mod cli;
+#[cfg(feature = "build-bin")]
 pub use cli::Cli;
 
 use sha2::{Digest, Sha256};

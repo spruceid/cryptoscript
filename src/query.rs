@@ -8,7 +8,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
-use tokio_stream::{self as stream, StreamExt};
 
 /// HTTP request type
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,9 +105,9 @@ impl QueryTemplate {
     }
 
     /// Convert to a Query with the given variables, cache_location, resp.
-    pub fn to_query(self, variables: Arc<Map<String, Value>>, cache_location: Arc<PathBuf>) -> Query {
+    pub fn to_query(&self, variables: Arc<Map<String, Value>>, cache_location: Arc<PathBuf>) -> Query {
         Query {
-            query_template: self,
+            query_template: self.clone(),
             variables,
             cache_location,
         }
@@ -241,10 +240,13 @@ impl QueryTemplates {
     /// Run a list of QueryTemplate's, in series, and collect their results
     pub async fn run(self, variables: Arc<Map<String, Value>>, cache_location: Arc<PathBuf>) -> Result<Vec<Map<String, Value>>, QueryError> {
         let mut result = Vec::with_capacity(self.queries.len());
-        let mut stream = stream::iter(self.queries);
-        while let Some(query_template) = stream.next().await {
+        let mut stream = self.queries.iter();
+        while let Some(query_template) = stream.next() {
             let query_json = query_template.to_json()?;
-            let query_result = query_template.to_query(variables.clone(), cache_location.clone()).run().await?;
+            let query_result = query_template
+                .to_query(variables.clone(), cache_location.clone())
+                .run()
+                .await?;
             let mut query_result_json = Map::new();
             query_result_json.insert("query".to_string(), query_json);
             query_result_json.insert("result".to_string(), query_result);
