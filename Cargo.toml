@@ -1,36 +1,56 @@
 [package]
 name = "cryptoscript"
+description = "cryptoscript is a small language for pre-signing"
 version = "0.1.0"
 edition = "2018"
 
-[[bin]]
-name = "cryptoscript"
-path = "src/main.rs"
-
-[[bin]]
-name = "rest-api"
-path = "src/rest_api.rs"
+[lib]
+crate-type = ["lib", "cdylib"]
+path = "src/lib.rs"
 
 [dependencies]
-actix-web = { version = "4.0.1", default-features = false, features = ["macros"] }
-
-clap = { version = "3.1.6", features = ["derive"] }
 enumset = { version = "1.0.8", features = ["serde"] }
-futures = { version = "0.3.21", features = ["executor", "thread-pool"] }
 generic-array = "0.14"
 hex = "0.4"
-hex-literal = "0.3"
 indexmap = "1.5"
-k256 = { version = "0.10.2", features = ["std", "ecdsa", "serde"] }
 nom = "7.1.1"
-quickcheck = "1.0.3"
-quickcheck_macros = "1.0.0"
 reqwest = { version = "0.11.10", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0.79", features = ["arbitrary_precision", "preserve_order"] }
 sha2 = "0.9"
-sha3 = "0.9"
-tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread"] }
-tokio-stream = "0.1.8"
 thiserror = "1.0"
 typenum = "1.15.0"
+
+actix-web = { version = "4.0.1", default-features = false, features = ["macros"], optional = true }
+clap = { version = "3.1.6", features = ["derive"], optional = true }
+tokio = { version = "1.17.0", features = ["macros", "rt-multi-thread"], optional = true }
+tokio-stream = { version = "0.1.8", optional = true }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
+
+[dev-dependencies]
+hex-literal = "0.3"
+quickcheck = "1.0.3"
+sha3 = "0.9"
+
+[features]
+build-bin = [
+  "actix-web",
+  "clap",
+  "tokio",
+  "tokio-stream",
+  ]
+build-wasm = [
+  "wasm-bindgen",
+  ]
+default = ["build-bin"]
+
+[[bin]]
+name = "cryptoscript"
+path = "src/main.rs"
+required-features = ["build-bin"]
+
+[[bin]]
+name = "rest-api"
+path = "src/rest_api.rs"
+required-features = ["build-bin"]
+

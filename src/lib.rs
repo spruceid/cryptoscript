@@ -12,8 +12,12 @@
 
 mod restack;
 pub use restack::{Restack, StackIx};
+
 mod arbitrary;
-pub use arbitrary::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
+#[cfg(test)]
+pub use arbitrary::test_arbitrary_defs;
+#[cfg(test)]
+pub use arbitrary::test_arbitrary_defs::{ArbitraryNumber, ArbitraryMap, ArbitraryValue};
 mod elem;
 pub use elem::{Elem, ElemSymbol};
 mod elem_type;
@@ -86,9 +90,14 @@ pub use parse_utils::{parse_string, whitespace_delimited};
 mod parse_nom;
 pub use parse_nom::{parse_nom, SourceCode, SourceBlock, Comment, Var, Assignment, App, Expr, TypeAnnotation, InstructionsWriter};
 
+#[cfg(feature = "build-bin")]
 mod rest_api;
+#[cfg(feature = "build-bin")]
 pub use rest_api::Api;
+
+#[cfg(feature = "build-bin")]
 mod cli;
+#[cfg(feature = "build-bin")]
 pub use cli::Cli;
 
 use sha2::{Digest, Sha256};
